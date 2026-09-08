@@ -47,3 +47,18 @@ func formatNixFlakePackage(buildContext string, ref name.Reference, p *v1.Platfo
 		formatNixFlakePackageName(ref),
 	)
 }
+
+// resolveFlakeURL returns the explicit flake URL when set, otherwise the
+// build context path so nix commands keep targeting the local flake.
+// Values starting with '-' are rejected so a flake URL can never be
+// parsed as a nix flag.
+func resolveFlakeURL(buildContext, flake string) (string, error) {
+	flake = strings.TrimSpace(flake)
+	if flake == "" {
+		return buildContext, nil
+	}
+	if strings.HasPrefix(flake, "-") {
+		return "", fmt.Errorf("invalid flake URL %q: must not start with '-'", flake)
+	}
+	return flake, nil
+}

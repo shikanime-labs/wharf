@@ -13,7 +13,7 @@ var (
 	rootCmd = &cobra.Command{
 		Use:   "wharf",
 		Short: "Build OCI images from Nix flakes",
-		Long:  "CLI to build and optionally push OCI images produced from Nix flakes. Primarily intended for Skaffold custom builders. Configure via env vars: IMAGE, PLATFORMS, BUILD_CONTEXT, PUSH_IMAGE, LOG_LEVEL, ACCEPT_FLAKE_CONFIG.",
+		Long:  "CLI to build and optionally push OCI images produced from Nix flakes. Primarily intended for Skaffold custom builders. Configure via env vars: IMAGE, PLATFORMS, BUILD_CONTEXT, PUSH_IMAGE, LOG_LEVEL, ACCEPT_FLAKE_CONFIG, FLAKE.",
 		Example: "# Show help\n" +
 			"wharf --help\n\n" +
 			"# Build via Skaffold custom builder\n" +
@@ -61,12 +61,17 @@ var (
 					"build context must be provided via arg or --build-context/BUILD_CONTEXT",
 				)
 			}
+			flakeURL, err := resolveFlakeURL(buildContext, getFlakeURL())
+			if err != nil {
+				return err
+			}
 			slog.InfoContext(
 				ctx,
 				"build config",
 				"image", image.String(),
 				"platforms", plats,
 				"build_context", buildContext,
+				"flake_url", flakeURL,
 				"push", pushImage,
 				"accept_flake_config", acceptFlake,
 				"no_pure_eval", noPureEval,
@@ -82,7 +87,7 @@ var (
 			}
 			container := NewContainerClient(ctx)
 			builder := NewBuilder(NewNixClient(), container, opts...)
-			return builder.BuildAndPush(ctx, buildContext, image, plats)
+			return builder.BuildAndPush(ctx, flakeURL, image, plats)
 		},
 	}
 )
@@ -110,6 +115,13 @@ func init() {
 		Bool("debug", false, "enable debug logging")
 	if err := viper.BindPFlag("debug", rootCmd.PersistentFlags().Lookup("debug")); err != nil {
 		slog.Error("bind flag failed", "flag", "debug", "err", err)
+		os.Exit(1)
+	}
+	rootCmd.PersistentFlags().
+		String("flake", "",
+			"explicit flake URL to build (e.g., github:org/repo); overrides the build context path")
+	if err := viper.BindPFlag("flake", rootCmd.PersistentFlags().Lookup("flake")); err != nil {
+		slog.Error("bind flag failed", "flag", "flake", "err", err)
 		os.Exit(1)
 	}
 	rootCmd.AddCommand(buildCmd)

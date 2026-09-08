@@ -30,3 +30,62 @@ func TestFormatNixFlakePackage(t *testing.T) {
 		t.Fatalf("expected %s, got %s", want, got)
 	}
 }
+
+func TestResolveFlakeURL(t *testing.T) {
+	tests := []struct {
+		name         string
+		buildContext string
+		flake        string
+		expected     string
+		wantErr      bool
+	}{
+		{
+			name:         "flake URL overrides build context",
+			buildContext: "/workspace",
+			flake:        "github:shikanime-labs/nix-containers",
+			expected:     "github:shikanime-labs/nix-containers",
+		},
+		{
+			name:         "empty flake falls back to build context",
+			buildContext: "/workspace",
+			flake:        "",
+			expected:     "/workspace",
+		},
+		{
+			name:         "both empty yields empty",
+			buildContext: "",
+			flake:        "",
+			expected:     "",
+		},
+		{
+			name:         "whitespace-only flake falls back to build context",
+			buildContext: "/workspace",
+			flake:        "   ",
+			expected:     "/workspace",
+		},
+		{
+			name:     "dash-prefixed flake is rejected",
+			flake:    "--impure",
+			wantErr:  true,
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := resolveFlakeURL(tt.buildContext, tt.flake)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got %q", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.expected {
+				t.Fatalf("expected %s, got %s", tt.expected, got)
+			}
+		})
+	}
+}
