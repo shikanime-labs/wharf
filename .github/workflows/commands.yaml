@@ -7,13 +7,11 @@ permissions:
       - created
 jobs:
   backport:
-    if:
-      github.event.issue.pull_request != null &&
-      contains(github.event.comment.body, '.backport')
+    if: github.event.issue.pull_request != null && contains(github.event.comment.body, '.backport')
     runs-on: ubuntu-slim
     steps:
       - id: createGithubAppToken
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        uses: actions/create-github-app-token@v3
         with:
           client-id: ${{ vars.OPERATOR_APP_CLIENT_ID }}
           permission-contents: write
@@ -21,45 +19,40 @@ jobs:
           permission-pull-requests: write
           permission-workflows: write
           private-key: ${{ secrets.OPERATOR_PRIVATE_KEY }}
-      - uses: shikanime-labs/actions/nix/setup@5993d4d95befc190a14c0d143583683d203ad8d1 # v9
+      - uses: shikanime-labs/actions/nix/setup@v9
         with:
           github-token: ${{ steps.createGithubAppToken.outputs.token }}
-      - uses: shikanime-labs/actions/command/backport@5993d4d95befc190a14c0d143583683d203ad8d1 # v9
+      - uses: shikanime-labs/actions/command/backport@v9
         with:
           github-token: ${{ steps.createGithubAppToken.outputs.token }}
           gpg-passphrase: ${{ secrets.GPG_PASSPHRASE }}
           gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
           sign-commits: true
   close:
-    if:
-      github.event.issue.pull_request != null &&
-      contains(github.event.comment.body, '.close')
+    if: github.event.issue.pull_request != null && contains(github.event.comment.body, '.close')
     runs-on: ubuntu-slim
     steps:
       - id: createGithubAppToken
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        uses: actions/create-github-app-token@v3
         with:
           client-id: ${{ vars.OPERATOR_APP_CLIENT_ID }}
           permission-contents: write
           permission-issues: write
           permission-pull-requests: write
           private-key: ${{ secrets.OPERATOR_PRIVATE_KEY }}
-      - uses: shikanime-labs/actions/nix/setup@5993d4d95befc190a14c0d143583683d203ad8d1 # v9
+      - uses: shikanime-labs/actions/nix/setup@v9
         with:
           github-token: ${{ steps.createGithubAppToken.outputs.token }}
-      - uses: shikanime-labs/actions/command/close@5993d4d95befc190a14c0d143583683d203ad8d1 # v9
+      - uses: shikanime-labs/actions/command/close@v9
         with:
           github-token: ${{ steps.createGithubAppToken.outputs.token }}
           username: yorha-automata
   land:
-    if:
-      github.event.issue.pull_request != null &&
-      (contains(github.event.comment.body, '.land') ||
-      contains(github.event.comment.body, '.force-land'))
+    if: github.event.issue.pull_request != null && (contains(github.event.comment.body, '.land') || contains(github.event.comment.body, '.force-land'))
     runs-on: ubuntu-slim
     steps:
       - id: createGithubAppToken
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        uses: actions/create-github-app-token@v3
         with:
           client-id: ${{ vars.OPERATOR_APP_CLIENT_ID }}
           permission-administration: read
@@ -68,10 +61,10 @@ jobs:
           permission-pull-requests: write
           permission-workflows: write
           private-key: ${{ secrets.OPERATOR_PRIVATE_KEY }}
-      - uses: shikanime-labs/actions/nix/setup@5993d4d95befc190a14c0d143583683d203ad8d1 # v9
+      - uses: shikanime-labs/actions/nix/setup@v9
         with:
           github-token: ${{ steps.createGithubAppToken.outputs.token }}
-      - uses: shikanime-labs/actions/command/land@5993d4d95befc190a14c0d143583683d203ad8d1 # v9
+      - uses: shikanime-labs/actions/command/land@v9
         with:
           email: automata@shikanime.studio
           fullname: Automata
@@ -81,13 +74,11 @@ jobs:
           sign-commits: true
           username: yorha-automata
   rebase:
-    if:
-      github.event.issue.pull_request != null &&
-      contains(github.event.comment.body, '.rebase')
+    if: github.event.issue.pull_request != null && contains(github.event.comment.body, '.rebase')
     runs-on: ubuntu-slim
     steps:
       - id: createGithubAppToken
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        uses: actions/create-github-app-token@v3
         with:
           client-id: ${{ vars.OPERATOR_APP_CLIENT_ID }}
           permission-contents: write
@@ -95,10 +86,10 @@ jobs:
           permission-pull-requests: write
           permission-workflows: write
           private-key: ${{ secrets.OPERATOR_PRIVATE_KEY }}
-      - uses: shikanime-labs/actions/nix/setup@5993d4d95befc190a14c0d143583683d203ad8d1 # v9
+      - uses: shikanime-labs/actions/nix/setup@v9
         with:
           github-token: ${{ steps.createGithubAppToken.outputs.token }}
-      - uses: shikanime-labs/actions/command/rebase@5993d4d95befc190a14c0d143583683d203ad8d1 # v9
+      - uses: shikanime-labs/actions/command/rebase@v9
         with:
           email: automata@shikanime.studio
           fullname: Automata
@@ -108,22 +99,20 @@ jobs:
           sign-commits: true
           username: yorha-automata
   run:
-    if:
-      github.event.issue.pull_request != null &&
-      contains(github.event.comment.body, '.run')
+    if: github.event.issue.pull_request != null && contains(github.event.comment.body, '.run')
     runs-on: ubuntu-slim
     steps:
       - id: createGithubAppToken
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        uses: actions/create-github-app-token@v3
         with:
           client-id: ${{ vars.OPERATOR_APP_CLIENT_ID }}
           permission-contents: write
           permission-issues: write
           permission-pull-requests: write
           private-key: ${{ secrets.OPERATOR_PRIVATE_KEY }}
-      - uses: shikanime-labs/actions/nix/setup@5993d4d95befc190a14c0d143583683d203ad8d1 # v9
+      - uses: shikanime-labs/actions/nix/setup@v9
         with:
           github-token: ${{ steps.createGithubAppToken.outputs.token }}
-      - uses: shikanime-labs/actions/command/run@5993d4d95befc190a14c0d143583683d203ad8d1 # v9
+      - uses: shikanime-labs/actions/command/run@v9
         with:
           github-token: ${{ steps.createGithubAppToken.outputs.token }}
