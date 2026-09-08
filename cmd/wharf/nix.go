@@ -382,14 +382,16 @@ func (n *NixClient) BuildPlatformImages(
 	selectExpr := "attrs: {\n" + strings.Join(selectParts, "\n") + "\n}"
 
 	args := []string{
-		"fast-build",
 		"--flake", buildContext + "#packages",
 		"--select", selectExpr,
 		"--systems", strings.Join(systems, " "),
 		"--option", "accept-flake-config", "true",
 		"--stream-json-lines",
 	}
-	cmd := nixCommandContext(ctx, "nix", args...)
+	// The flake package wraps this binary into PATH via makeWrapper; a
+	// bare `go install` build requires nix-fast-build (and, for its
+	// evaluation workers, nix-eval-jobs) in PATH.
+	cmd := nixCommandContext(ctx, "nix-fast-build", args...)
 	slog.InfoContext(
 		ctx,
 		"start nix-fast-build",
