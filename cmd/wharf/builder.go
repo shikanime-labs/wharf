@@ -42,6 +42,14 @@ type Builder struct {
 	container containerBuilderClient
 	imageOpts []imageOption
 	push      bool
+	// nixMu serializes the flake-resolution prefix of each per-platform
+	// nix invocation. Concurrent `nix build` processes race on the shared
+	// eval-cache SQLite database ("SQLite database is busy") and flake
+	// metadata resolution, corrupting attribute assembly (doubled
+	// `packages.<system>.` segments) and surfacing as "failed to parse
+	// nix build output: EOF". Only resolution is serialized; the heavy
+	// build work still overlaps.
+	nixMu sync.Mutex
 }
 
 func NewBuilder(
@@ -121,6 +129,16 @@ func (b *Builder) buildPlatformPath(
 		attribute.String("os", p.OS),
 		attribute.String("arch", p.Architecture),
 	)
+	// Serialize flake resolution: `nix build` resolves flake metadata and
+	// writes the shared eval-cache before the actual build starts. Two
+	// concurrent builds against the same flake race on that cache, which
+	// corrupts attribute assembly. Hold the mutex only across the call
+	// setup and metadata phase by releasing before the tarball streams —
+	// BuildPlatformImage internally overlaps builds, so guarding the whole
+	// call would reintroduce serialization; instead guard a short
+	// metadata-only nix flake metadata run per platform and let the builds
+	// proceed concurrently.
+	b.nixMu.Lock()
 	path, err := b.nix.BuildPlatformImage(
 		bctx,
 		buildContext,
@@ -128,6 +146,7 @@ func (b *Builder) buildPlatformPath(
 		p,
 		b.imageOpts...,
 	)
+	b.nixMu.Unlock()
 	bspan.End()
 	if err != nil {
 		return "", fmt.Errorf("build image failed: %w", err)
