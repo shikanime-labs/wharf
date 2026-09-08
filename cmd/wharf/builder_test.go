@@ -70,7 +70,7 @@ func TestBuilderBuildAndPushSinglePlatformStreamFlow(t *testing.T) {
 		nixClient,
 		containerClient,
 		WithPush(true),
-		WithStreamImageOption(WithAcceptFlakeConfig()),
+		WithStreamImageOption(WithOption("accept-flake-config", "true")),
 	)
 	if err := builder.BuildAndPush(
 		context.Background(),

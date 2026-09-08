@@ -32,8 +32,11 @@ const (
 type imageOption func(*imageOptions)
 
 type imageOptions struct {
-	acceptFlakeConfig bool
-	noPureEval        bool
+	// options holds `--option <key> <value>` pairs forwarded to the
+	// underlying nix command. It is pre-seeded with the fixed flags
+	// accept-flake-config and no-pure-eval, which are expressed as plain
+	// nix options rather than dedicated struct fields.
+	options []string
 }
 
 type NixClient struct{}
@@ -106,19 +109,14 @@ func NewNixClient() *NixClient {
 	return &NixClient{}
 }
 
-func WithAcceptFlakeConfig() imageOption {
-	return func(o *imageOptions) { o.acceptFlakeConfig = true }
-}
-
-func WithNoPureEval() imageOption {
-	return func(o *imageOptions) { o.noPureEval = true }
+func WithOption(key, value string) imageOption {
+	return func(o *imageOptions) {
+		o.options = append(o.options, key, value)
+	}
 }
 
 func makeImageOptions(opts ...imageOption) *imageOptions {
-	o := &imageOptions{
-		acceptFlakeConfig: true,
-		noPureEval:        true,
-	}
+	o := &imageOptions{}
 	for _, opt := range opts {
 		opt(o)
 	}
@@ -135,8 +133,8 @@ func (n *NixClient) GetImageBuilderType(
 	o := makeImageOptions(opts...)
 
 	args := []string{"flake", "show", "--json", "--all-systems", buildContext}
-	if o.noPureEval {
-		args = append(args, "--no-pure-eval")
+	for i := 0; i+1 < len(o.options); i += 2 {
+		args = append(args, "--option", o.options[i], o.options[i+1])
 	}
 	cmd := nixCommandContext(ctx, "nix", args...)
 	slog.DebugContext(ctx, "checking image builder type", "cmd", cmd.Path, "args", args)
@@ -233,9 +231,9 @@ func (n *NixClient) BuildImage(
 ) (string, error) {
 	o := makeImageOptions(opts...)
 
-	args := []string{"build"}
-	if o.acceptFlakeConfig {
-		args = append(args, "--accept-flake-config", "--no-link")
+	args := []string{"build", "--no-link"}
+	for i := 0; i+1 < len(o.options); i += 2 {
+		args = append(args, "--option", o.options[i], o.options[i+1])
 	}
 	args = append(args, "--json", url)
 	cmd := nixCommandContext(ctx, "nix", args...)

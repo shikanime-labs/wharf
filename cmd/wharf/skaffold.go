@@ -44,8 +44,10 @@ var (
 			}
 			plats := getPlatforms()
 			pushImage := getPushImage()
-			acceptFlake := getAcceptFlakeConfig()
-			noPureEvalFlake := getNoPureEval()
+			extraOptions, err := getExtraOptions()
+			if err != nil {
+				return err
+			}
 			slog.InfoContext(
 				ctx,
 				"build config",
@@ -54,18 +56,13 @@ var (
 				"build_context", buildContext,
 				"flake_url", flakeURL,
 				"push", pushImage,
-				"accept_flake_config", acceptFlake,
-				"no_pure_eval_flake", noPureEvalFlake,
 				"debug", debug,
 			)
 			opts := []BuildOption{
 				WithPush(pushImage),
 			}
-			if acceptFlake {
-				opts = append(opts, WithStreamImageOption(WithAcceptFlakeConfig()))
-			}
-			if noPureEvalFlake {
-				opts = append(opts, WithStreamImageOption(WithNoPureEval()))
+			for _, pair := range extraOptions {
+				opts = append(opts, WithStreamImageOption(WithOption(pair[0], pair[1])))
 			}
 			container := NewContainerClient(ctx)
 			builder := NewBuilder(NewNixClient(), container, opts...)

@@ -36,22 +36,6 @@ func init() {
 		slog.Error("bind env failed", "env", "LOG_LEVEL", "key", "log_level", "err", err)
 		os.Exit(1)
 	}
-	if err := viper.BindEnv("accept_flake_config", "ACCEPT_FLAKE_CONFIG"); err != nil {
-		slog.Error(
-			"bind env failed",
-			"env",
-			"ACCEPT_FLAKE_CONFIG",
-			"key",
-			"accept_flake_config",
-			"err",
-			err,
-		)
-		os.Exit(1)
-	}
-	if err := viper.BindEnv("no_pure_eval", "NO_PURE_EVAL"); err != nil {
-		slog.Error("bind env failed", "env", "NO_PURE_EVAL", "key", "no_pure_eval", "err", err)
-		os.Exit(1)
-	}
 	if err := viper.BindEnv("debug", "DEBUG"); err != nil {
 		slog.Error("bind env failed", "env", "DEBUG", "key", "debug", "err", err)
 		os.Exit(1)
@@ -139,23 +123,25 @@ func getLogLevel() (slog.Level, error) {
 	}
 }
 
-func getAcceptFlakeConfig() bool {
-	switch strings.ToLower(viper.GetString("accept_flake_config")) {
-	case "1", "true", "yes", "on":
-		return true
-	default:
-		return false
-	}
-}
-
-func getNoPureEval() bool {
-	return viper.GetBool("no_pure_eval")
-}
-
 func getDebug() bool {
 	return viper.GetBool("debug") || viper.GetBool("actions_step_debug")
 }
 
 func getFlakeURL() string {
 	return viper.GetString("flake")
+}
+
+// getExtraOptions parses repeated `--option key=value` flags into
+// key/value pairs forwarded to the underlying nix command.
+func getExtraOptions() ([][2]string, error) {
+	raw := viper.GetStringSlice("options")
+	pairs := make([][2]string, 0, len(raw))
+	for _, item := range raw {
+		key, value, found := strings.Cut(item, "=")
+		if !found || key == "" || value == "" {
+			return nil, fmt.Errorf("invalid --option %q: expected key=value", item)
+		}
+		pairs = append(pairs, [2]string{key, value})
+	}
+	return pairs, nil
 }
