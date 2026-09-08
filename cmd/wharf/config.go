@@ -56,6 +56,10 @@ func init() {
 		slog.Error("bind env failed", "env", "DEBUG", "key", "debug", "err", err)
 		os.Exit(1)
 	}
+	if err := viper.BindEnv("flake", "FLAKE"); err != nil {
+		slog.Error("bind env failed", "env", "FLAKE", "key", "flake", "err", err)
+		os.Exit(1)
+	}
 }
 
 func getHostPlatform() *v1.Platform {
@@ -150,4 +154,8 @@ func getNoPureEval() bool {
 
 func getDebug() bool {
 	return viper.GetBool("debug") || viper.GetBool("actions_step_debug")
+}
+
+func getFlakeURL() string {
+	return viper.GetString("flake")
 }

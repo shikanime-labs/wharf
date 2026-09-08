@@ -19,7 +19,7 @@ var (
 	skaffoldBuildCmd = &cobra.Command{
 		Use:     "build",
 		Short:   "Build and optionally push images",
-		Long:    "Builds OCI images from a Nix flake and optionally pushes them to a registry. Configure via env vars: IMAGE, PLATFORMS, BUILD_CONTEXT, PUSH_IMAGE, LOG_LEVEL, ACCEPT_FLAKE_CONFIG.",
+		Long:    "Builds OCI images from a Nix flake and optionally pushes them to a registry. Configure via env vars: IMAGE, PLATFORMS, BUILD_CONTEXT, PUSH_IMAGE, LOG_LEVEL, ACCEPT_FLAKE_CONFIG, FLAKE.",
 		Example: "IMAGE=ghcr.io/you/app:latest PLATFORMS=linux/amd64 PUSH_IMAGE=true BUILD_CONTEXT=. ACCEPT_FLAKE_CONFIG=true ./wharf skaffold build",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
@@ -34,6 +34,10 @@ var (
 				}
 			}()
 			buildContext := getBuildContext()
+			flakeURL, err := resolveFlakeURL(buildContext, getFlakeURL())
+			if err != nil {
+				return err
+			}
 			ref, err := getImageTag()
 			if err != nil {
 				return fmt.Errorf("failed to get image: %w", err)
@@ -48,6 +52,7 @@ var (
 				"image", ref.String(),
 				"platforms", plats,
 				"build_context", buildContext,
+				"flake_url", flakeURL,
 				"push", pushImage,
 				"accept_flake_config", acceptFlake,
 				"no_pure_eval_flake", noPureEvalFlake,
@@ -64,7 +69,7 @@ var (
 			}
 			container := NewContainerClient(ctx)
 			builder := NewBuilder(NewNixClient(), container, opts...)
-			return builder.BuildAndPush(ctx, buildContext, ref, plats)
+			return builder.BuildAndPush(ctx, flakeURL, ref, plats)
 		},
 	}
 )

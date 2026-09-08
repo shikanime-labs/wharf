@@ -22,6 +22,8 @@ directly from the CLI as well.
 - Global:
   - `--accept-flake-config` Accept Nix flake configuration during build (also
     via `ACCEPT_FLAKE_CONFIG`).
+  - `--flake` Explicit flake URL to build (e.g., `github:org/repo`); overrides
+    the build context path (also via `FLAKE`).
 - Build command:
   - `--no-pure-eval` Disable pure evaluation of Nix expressions (also via
     `NO_PURE_EVAL`).
@@ -40,6 +42,9 @@ directly from the CLI as well.
 - `LOG_LEVEL` Optional (`info|debug|warn|error`). Defaults to `info`.
 - `ACCEPT_FLAKE_CONFIG` Optional boolean. Accept Nix flake config during build.
   Can also be set via `--accept-flake-config`.
+- `FLAKE` Optional. Explicit flake URL (e.g., `github:org/repo`). When set, all
+  nix commands target that flake instead of the build context path. Can also be
+  set via `--flake`.
 
 ## Examples
 
