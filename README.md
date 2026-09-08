@@ -9,6 +9,12 @@ directly from the CLI as well.
 - Go install: `go install github.com/shikanime-studio/wharf@latest`
 - From source: `go build -o wharf .`
 
+## Prerequisites
+
+- `nix` with flakes enabled (always)
+- `nix fast-build` (the `nix-fast-build` app registered in the nix profile)
+  for multi-platform builds; single-platform builds only need `nix build`
+
 ## Commands
 
 - `wharf build [BUILD_CONTEXT]`

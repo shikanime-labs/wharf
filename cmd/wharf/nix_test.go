@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -284,4 +285,157 @@ func TestNixClientBuildPlatformImageFormatsFlakeTarget(t *testing.T) {
 		"--json",
 		"/workspace#packages.x86_64-linux.app",
 	)
+}
+
+func TestNixClientBuildPlatformImagesBuildsBatch(t *testing.T) {
+	argsFile := setupNixCommandTest(
+		t,
+		`{"type":"BUILD","attr":"x86_64-linux.app","success":true,"outputs":{"out":"/nix/store/app"}}`+"\n"+
+			`{"type":"BUILD","attr":"aarch64-linux.app","success":true,"outputs":{"out":"/nix/store/app-arm"}}`+"\n",
+		"",
+		0,
+	)
+
+	ref := mustParseReference(t)
+	got, err := NewNixClient().BuildPlatformImages(
+		context.Background(),
+		"/workspace",
+		ref,
+		[]*v1.Platform{
+			{OS: "linux", Architecture: "amd64"},
+			{OS: "linux", Architecture: "arm64"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("build platform images failed: %v", err)
+	}
+	want := []string{"/nix/store/app", "/nix/store/app-arm"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+
+	assertCapturedCommandArgs(
+		t,
+		argsFile,
+		"nix-fast-build",
+		"--flake",
+		"/workspace#packages",
+		"--select",
+		"attrs: {\n  \"x86_64-linux\".\"app\" = attrs.\"x86_64-linux\".\"app\";\n  \"aarch64-linux\".\"app\" = attrs.\"aarch64-linux\".\"app\";\n}",
+		"--systems",
+		"x86_64-linux aarch64-linux",
+		"--option",
+		"accept-flake-config",
+		"true",
+		"--stream-json-lines",
+	)
+}
+
+func TestNixClientBuildPlatformImagesReportsFailedAttrs(t *testing.T) {
+	setupNixCommandTest(
+		t,
+		`{"type":"BUILD","attr":"x86_64-linux.app","success":true,"outputs":{"out":"/nix/store/app"}}`+"\n"+
+			`{"type":"BUILD","attr":"aarch64-linux.app","success":false,"error":"build failed"}`+"\n",
+		"error: builder for aarch64-linux failed",
+		1,
+	)
+
+	ref := mustParseReference(t)
+	_, err := NewNixClient().BuildPlatformImages(
+		context.Background(),
+		"/workspace",
+		ref,
+		[]*v1.Platform{
+			{OS: "linux", Architecture: "amd64"},
+			{OS: "linux", Architecture: "arm64"},
+		},
+	)
+	if err == nil {
+		t.Fatal("expected build failure")
+	}
+	if !strings.Contains(err.Error(), "failed to wait for command") {
+		t.Fatalf("expected wait error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "error: builder for aarch64-linux failed") {
+		t.Fatalf("expected stderr in error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "failed attrs: aarch64-linux.app") {
+		t.Fatalf("expected failed attr in error, got %v", err)
+	}
+}
+
+func TestNixClientBuildPlatformImagesRejectsMissingResult(t *testing.T) {
+	setupNixCommandTest(
+		t,
+		`{"type":"BUILD","attr":"x86_64-linux.app","success":true,"outputs":{"out":"/nix/store/app"}}`+"\n",
+		"",
+		0,
+	)
+
+	ref := mustParseReference(t)
+	_, err := NewNixClient().BuildPlatformImages(
+		context.Background(),
+		"/workspace",
+		ref,
+		[]*v1.Platform{
+			{OS: "linux", Architecture: "amd64"},
+			{OS: "linux", Architecture: "arm64"},
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "no result for aarch64-linux.app") {
+		t.Fatalf("expected missing result error, got %v", err)
+	}
+}
+
+// TestBuildPlatformImagesRealNix exercises the full nix-fast-build pipeline
+// against this repository's own flake (packages.<host-system>.default).
+// Requires network, a working nix, and nix-fast-build in PATH, so it only
+// runs when WHARF_TEST_REAL_NIX=1 is set (nix build / nix flake check set
+// it for integration runs).
+func TestBuildPlatformImagesRealNix(t *testing.T) {
+	if os.Getenv("WHARF_TEST_REAL_NIX") != "1" {
+		t.Skip("set WHARF_TEST_REAL_NIX=1 to run the real-nix integration test")
+	}
+	if runtime.GOOS != "darwin" || runtime.GOARCH != "arm64" {
+		t.Skipf(
+			"flake exposes packages.aarch64-darwin.default only, host is %s/%s",
+			runtime.GOOS,
+			runtime.GOARCH,
+		)
+	}
+	if _, err := exec.LookPath("nix-fast-build"); err != nil {
+		t.Skipf("nix-fast-build not in PATH: %v", err)
+	}
+
+	ctx := context.Background()
+	repoRoot, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatalf("resolve repo root failed: %v", err)
+	}
+	// The flake package name is derived from the image reference's last
+	// path segment; .../default selects packages.<system>.default.
+	fakeRef, err := name.ParseReference("ghcr.io/example/default:latest")
+	if err != nil {
+		t.Fatalf("parse reference failed: %v", err)
+	}
+	paths, err := NewNixClient().BuildPlatformImages(
+		ctx,
+		repoRoot,
+		fakeRef,
+		[]*v1.Platform{{OS: "darwin", Architecture: "arm64"}},
+	)
+	if err != nil {
+		t.Fatalf("real nix build failed: %v", err)
+	}
+	if len(paths) != 1 {
+		t.Fatalf("expected one path, got %v", paths)
+	}
+	for _, p := range paths {
+		if !filepath.IsAbs(p) || !strings.HasPrefix(p, "/nix/store/") {
+			t.Fatalf("expected a /nix/store path, got %q", p)
+		}
+	}
+	if _, err := os.Stat(paths[0]); err != nil {
+		t.Fatalf("built path does not exist: %v", err)
+	}
 }

@@ -28,6 +28,13 @@ type nixBuilderClient interface {
 		*v1.Platform,
 		...imageOption,
 	) (string, error)
+	BuildPlatformImages(
+		context.Context,
+		string,
+		name.Reference,
+		[]*v1.Platform,
+		...imageOption,
+	) ([]string, error)
 }
 
 type containerBuilderClient interface {
@@ -42,14 +49,6 @@ type Builder struct {
 	container containerBuilderClient
 	imageOpts []imageOption
 	push      bool
-	// nixMu serializes the flake-resolution prefix of each per-platform
-	// nix invocation. Concurrent `nix build` processes race on the shared
-	// eval-cache SQLite database ("SQLite database is busy") and flake
-	// metadata resolution, corrupting attribute assembly (doubled
-	// `packages.<system>.` segments) and surfacing as "failed to parse
-	// nix build output: EOF". Only resolution is serialized; the heavy
-	// build work still overlaps.
-	nixMu sync.Mutex
 }
 
 func NewBuilder(
@@ -129,16 +128,6 @@ func (b *Builder) buildPlatformPath(
 		attribute.String("os", p.OS),
 		attribute.String("arch", p.Architecture),
 	)
-	// Serialize flake resolution: `nix build` resolves flake metadata and
-	// writes the shared eval-cache before the actual build starts. Two
-	// concurrent builds against the same flake race on that cache, which
-	// corrupts attribute assembly. Hold the mutex only across the call
-	// setup and metadata phase by releasing before the tarball streams —
-	// BuildPlatformImage internally overlaps builds, so guarding the whole
-	// call would reintroduce serialization; instead guard a short
-	// metadata-only nix flake metadata run per platform and let the builds
-	// proceed concurrently.
-	b.nixMu.Lock()
 	path, err := b.nix.BuildPlatformImage(
 		bctx,
 		buildContext,
@@ -146,7 +135,6 @@ func (b *Builder) buildPlatformPath(
 		p,
 		b.imageOpts...,
 	)
-	b.nixMu.Unlock()
 	bspan.End()
 	if err != nil {
 		return "", fmt.Errorf("build image failed: %w", err)
@@ -168,25 +156,29 @@ func (b *Builder) buildAndPushMultiplatformImage(
 	var adds []mutate.IndexAddendum
 	var addsMu sync.Mutex
 	slog.InfoContext(ctx, "build multiplatform image", "ref", ref.Name(), "platform_count", len(ps))
+
+	// One batched nix-fast-build invocation builds every platform: a
+	// single evaluation feeds parallel builds internally, so per-platform
+	// nix processes can no longer race the shared eval-cache (issue #98).
+	bctx, bspan := startSpan(ctx, "nix.build.batch",
+		attribute.String("ref", ref.Name()),
+		attribute.Int("platform_count", len(ps)),
+	)
+	paths, err := b.nix.BuildPlatformImages(bctx, buildContext, ref, ps, b.imageOpts...)
+	bspan.End()
+	if err != nil {
+		return fmt.Errorf("build images failed: %w", err)
+	}
+
 	wg, ctx := errgroup.WithContext(ctx)
-	for _, p := range ps {
-		p := p
+	for i, p := range ps {
+		p, path := p, paths[i]
 		wg.Go(func() error {
-			pctx, pspan := startSpan(ctx, "nix.build.platform",
+			_, pspan := startSpan(ctx, "nix.build.platform",
 				attribute.String("ref", ref.Name()),
 				attribute.String("platform", formatSystemName(p)),
 			)
 			defer pspan.End()
-			slog.InfoContext(
-				ctx,
-				"platform pipeline started",
-				"ref", ref.Name(),
-				"platform", formatSystemName(p),
-			)
-			path, err := b.buildPlatformPath(pctx, buildContext, ref, p)
-			if err != nil {
-				return err
-			}
 			slog.InfoContext(
 				ctx,
 				"platform image built",

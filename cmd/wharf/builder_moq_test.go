@@ -35,6 +35,9 @@ type mockNixBuilderClient struct {
 	// BuildPlatformImageFunc mocks the BuildPlatformImage method.
 	BuildPlatformImageFunc func(contextMoqParam context.Context, s string, reference name.Reference, platform *v1.Platform, imageOptionMoqParams ...imageOption) (string, error)
 
+	// BuildPlatformImagesFunc mocks the BuildPlatformImages method.
+	BuildPlatformImagesFunc func(contextMoqParam context.Context, s string, reference name.Reference, platforms []*v1.Platform, imageOptionMoqParams ...imageOption) ([]string, error)
+
 	// calls tracks calls to the methods.
 	calls struct {
 		// BuildPlatformImage holds details about calls to the BuildPlatformImage method.
@@ -50,8 +53,23 @@ type mockNixBuilderClient struct {
 			// ImageOptionMoqParams is the imageOptionMoqParams argument value.
 			ImageOptionMoqParams []imageOption
 		}
+		// BuildPlatformImages holds details about calls to the BuildPlatformImages method.
+		BuildPlatformImages []struct {
+			// ContextMoqParam is the contextMoqParam argument value.
+			ContextMoqParam context.Context
+			// S is the s argument value.
+			S string
+			// Reference is the reference argument value.
+			Reference name.Reference
+			// Platforms is the platforms argument value.
+			Platforms []*v1.Platform
+			// ImageOptionMoqParams is the imageOptionMoqParams argument value.
+			ImageOptionMoqParams []imageOption
+		}
 	}
 	lockBuildPlatformImage sync.RWMutex
+
+	lockBuildPlatformImages sync.RWMutex
 }
 
 // BuildPlatformImage calls BuildPlatformImageFunc.
@@ -103,6 +121,58 @@ func (mock *mockNixBuilderClient) BuildPlatformImageCalls() []struct {
 	mock.lockBuildPlatformImage.RLock()
 	calls = mock.calls.BuildPlatformImage
 	mock.lockBuildPlatformImage.RUnlock()
+	return calls
+}
+
+// BuildPlatformImages calls BuildPlatformImagesFunc.
+func (mock *mockNixBuilderClient) BuildPlatformImages(contextMoqParam context.Context, s string, reference name.Reference, platforms []*v1.Platform, imageOptionMoqParams ...imageOption) ([]string, error) {
+	callInfo := struct {
+		ContextMoqParam      context.Context
+		S                    string
+		Reference            name.Reference
+		Platforms            []*v1.Platform
+		ImageOptionMoqParams []imageOption
+	}{
+		ContextMoqParam:      contextMoqParam,
+		S:                    s,
+		Reference:            reference,
+		Platforms:            platforms,
+		ImageOptionMoqParams: imageOptionMoqParams,
+	}
+	mock.lockBuildPlatformImages.Lock()
+	mock.calls.BuildPlatformImages = append(mock.calls.BuildPlatformImages, callInfo)
+	mock.lockBuildPlatformImages.Unlock()
+	if mock.BuildPlatformImagesFunc == nil {
+		var (
+			platformsOut []string
+			errOut       error
+		)
+		return platformsOut, errOut
+	}
+	return mock.BuildPlatformImagesFunc(contextMoqParam, s, reference, platforms, imageOptionMoqParams...)
+}
+
+// BuildPlatformImagesCalls gets all the calls that were made to BuildPlatformImages.
+// Check the length with:
+//
+//	len(mockednixBuilderClient.BuildPlatformImagesCalls())
+func (mock *mockNixBuilderClient) BuildPlatformImagesCalls() []struct {
+	ContextMoqParam      context.Context
+	S                    string
+	Reference            name.Reference
+	Platforms            []*v1.Platform
+	ImageOptionMoqParams []imageOption
+} {
+	var calls []struct {
+		ContextMoqParam      context.Context
+		S                    string
+		Reference            name.Reference
+		Platforms            []*v1.Platform
+		ImageOptionMoqParams []imageOption
+	}
+	mock.lockBuildPlatformImages.RLock()
+	calls = mock.calls.BuildPlatformImages
+	mock.lockBuildPlatformImages.RUnlock()
 	return calls
 }
 
