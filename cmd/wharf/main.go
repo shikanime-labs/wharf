@@ -44,8 +44,10 @@ var (
 			}
 			plats := getPlatforms()
 			pushImage := getPushImage()
-			acceptFlake := getAcceptFlakeConfig()
-			noPureEval := getNoPureEval()
+			extraOptions, err := getExtraOptions()
+			if err != nil {
+				return err
+			}
 			buildContext := ""
 			if len(args) > 0 {
 				buildContext = args[0]
@@ -73,17 +75,12 @@ var (
 				"build_context", buildContext,
 				"flake_url", flakeURL,
 				"push", pushImage,
-				"accept_flake_config", acceptFlake,
-				"no_pure_eval", noPureEval,
 			)
 			opts := []BuildOption{
 				WithPush(pushImage),
 			}
-			if acceptFlake {
-				opts = append(opts, WithStreamImageOption(WithAcceptFlakeConfig()))
-			}
-			if noPureEval {
-				opts = append(opts, WithStreamImageOption(WithNoPureEval()))
+			for _, pair := range extraOptions {
+				opts = append(opts, WithStreamImageOption(WithOption(pair[0], pair[1])))
 			}
 			container := NewContainerClient(ctx)
 			builder := NewBuilder(NewNixClient(), container, opts...)
@@ -93,24 +90,6 @@ var (
 )
 
 func init() {
-	rootCmd.PersistentFlags().
-		Bool("accept-flake-config", false, "accept nix flake config during build")
-	if err := viper.BindPFlag(
-		"accept_flake_config",
-		rootCmd.PersistentFlags().Lookup("accept-flake-config"),
-	); err != nil {
-		slog.Error("bind flag failed", "flag", "accept-flake-config", "err", err)
-		os.Exit(1)
-	}
-	rootCmd.PersistentFlags().
-		Bool("no-pure-eval", false, "disable pure evaluation of nix expressions")
-	if err := viper.BindPFlag(
-		"no_pure_eval",
-		rootCmd.PersistentFlags().Lookup("no-pure-eval"),
-	); err != nil {
-		slog.Error("bind flag failed", "flag", "no-pure-eval", "err", err)
-		os.Exit(1)
-	}
 	rootCmd.PersistentFlags().
 		Bool("debug", false, "enable debug logging")
 	if err := viper.BindPFlag("debug", rootCmd.PersistentFlags().Lookup("debug")); err != nil {
@@ -122,6 +101,27 @@ func init() {
 			"explicit flake URL to build (e.g., github:org/repo); overrides the build context path")
 	if err := viper.BindPFlag("flake", rootCmd.PersistentFlags().Lookup("flake")); err != nil {
 		slog.Error("bind flag failed", "flag", "flake", "err", err)
+		os.Exit(1)
+	}
+	rootCmd.PersistentFlags().StringArray(
+		"option",
+		nil,
+		"extra nix --option <key> <value> to forward to the underlying nix command (repeatable, key=value)",
+	)
+	if err := viper.BindPFlag("options", rootCmd.PersistentFlags().Lookup("option")); err != nil {
+		slog.Error("bind flag failed", "flag", "option", "err", err)
+		os.Exit(1)
+	}
+	rootCmd.PersistentFlags().String(
+		"platforms",
+		"",
+		"comma-separated target platforms os/arch (e.g., linux/amd64,linux/arm64)",
+	)
+	if err := viper.BindPFlag(
+		"platforms",
+		rootCmd.PersistentFlags().Lookup("platforms"),
+	); err != nil {
+		slog.Error("bind flag failed", "flag", "platforms", "err", err)
 		os.Exit(1)
 	}
 	rootCmd.AddCommand(buildCmd)
@@ -153,15 +153,6 @@ func init() {
 	)
 	if err := viper.BindPFlag("push_image", buildCmd.Flags().Lookup("push")); err != nil {
 		slog.Error("bind flag failed", "flag", "push", "err", err)
-		os.Exit(1)
-	}
-	buildCmd.Flags().String(
-		"platforms",
-		"",
-		"comma-separated target platforms os/arch (e.g., linux/amd64,linux/arm64)",
-	)
-	if err := viper.BindPFlag("platforms", buildCmd.Flags().Lookup("platforms")); err != nil {
-		slog.Error("bind flag failed", "flag", "platforms", "err", err)
 		os.Exit(1)
 	}
 }

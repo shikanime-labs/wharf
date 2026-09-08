@@ -20,13 +20,11 @@ directly from the CLI as well.
 ## Flags
 
 - Global:
-  - `--accept-flake-config` Accept Nix flake configuration during build (also
-    via `ACCEPT_FLAKE_CONFIG`).
   - `--flake` Explicit flake URL to build (e.g., `github:org/repo`); overrides
     the build context path (also via `FLAKE`).
-- Build command:
-  - `--no-pure-eval` Disable pure evaluation of Nix expressions (also via
-    `NO_PURE_EVAL`).
+  - `--option key=value` Extra `--option key value` pair forwarded to the
+    underlying nix command. Repeatable (also via `--option`). Use it for
+    `accept-flake-config`, `pure-eval`, or any other nix setting.
   - `--platforms` Comma-separated platforms in `os/arch` form (e.g.,
     `linux/amd64,linux/arm64`). Overrides `PLATFORMS` env.
 
@@ -40,8 +38,6 @@ directly from the CLI as well.
 - `PUSH_IMAGE` Optional boolean (`true|false|1|yes|on`). When true, images are
   pushed after build.
 - `LOG_LEVEL` Optional (`info|debug|warn|error`). Defaults to `info`.
-- `ACCEPT_FLAKE_CONFIG` Optional boolean. Accept Nix flake config during build.
-  Can also be set via `--accept-flake-config`.
 - `FLAKE` Optional. Explicit flake URL (e.g., `github:org/repo`). When set, all
   nix commands target that flake instead of the build context path. Can also be
   set via `--flake`.
@@ -60,12 +56,12 @@ directly from the CLI as well.
     PUSH_IMAGE=true ./wharf build .
   ```
 
-- Multi-platform build via flag and accept flake config:
+- Multi-platform build via flags, forwarding a nix option:
 
   ```text
   IMAGE=ghcr.io/you/app:latest PUSH_IMAGE=true \
     ./wharf build --platforms linux/amd64,linux/arm64 \
-    --accept-flake-config .
+    --option accept-flake-config=true .
   ```
 
 ### Skaffold Usage
@@ -79,7 +75,7 @@ build:
   artifacts:
     - image: ghcr.io/you/app:latest
       custom:
-        buildCommand: ./wharf skaffold build --accept-flake-config
+        buildCommand: ./wharf skaffold build --option accept-flake-config=true
 deploy:
   kubectl:
     manifests:

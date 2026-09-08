@@ -167,7 +167,6 @@ func TestNixClientGetImageBuilderTypeParsesStreamArtifact(t *testing.T) {
 		"--json",
 		"--all-systems",
 		"/workspace",
-		"--no-pure-eval",
 	)
 }
 
@@ -192,7 +191,6 @@ func TestNixClientBuildImageReturnsOutPath(t *testing.T) {
 		argsFile,
 		"nix",
 		"build",
-		"--accept-flake-config",
 		"--no-link",
 		"--json",
 		"/workspace#packages.x86_64-linux.app",
@@ -211,7 +209,6 @@ func TestNixClientBuildImageReturnsErrorOnEmptyResult(t *testing.T) {
 		argsFile,
 		"nix",
 		"build",
-		"--accept-flake-config",
 		"--no-link",
 		"--json",
 		"/workspace#packages.x86_64-linux.app",
@@ -242,7 +239,6 @@ func TestNixClientBuildImageReturnsStderrOnCommandFailure(t *testing.T) {
 		argsFile,
 		"nix",
 		"build",
-		"--accept-flake-config",
 		"--no-link",
 		"--json",
 		"/workspace#packages.x86_64-linux.app",
@@ -279,8 +275,38 @@ func TestNixClientBuildPlatformImageFormatsFlakeTarget(t *testing.T) {
 		argsFile,
 		"nix",
 		"build",
-		"--accept-flake-config",
 		"--no-link",
+		"--json",
+		"/workspace#packages.x86_64-linux.app",
+	)
+}
+
+func TestNixClientBuildImageForwardsExtraOptions(t *testing.T) {
+	argsFile := setupNixCommandTest(
+		t,
+		`[{"drvPath":"/nix/store/app.drv","outputs":{"out":"/nix/store/app"}}]`,
+		"",
+		0,
+	)
+
+	_, err := NewNixClient().BuildImage(
+		context.Background(),
+		"/workspace#packages.x86_64-linux.app",
+		WithOption("system", "x86_64-linux"),
+		WithOption("max-jobs", "4"),
+	)
+	if err != nil {
+		t.Fatalf("build image failed: %v", err)
+	}
+
+	assertCapturedCommandArgs(
+		t,
+		argsFile,
+		"nix",
+		"build",
+		"--no-link",
+		"--option", "system", "x86_64-linux",
+		"--option", "max-jobs", "4",
 		"--json",
 		"/workspace#packages.x86_64-linux.app",
 	)
