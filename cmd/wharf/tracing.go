@@ -1,4 +1,4 @@
-// OpenTelemetry tracing for the nix-containers build pipeline.
+// OpenTelemetry tracing for the wharf build pipeline.
 //
 // The OTLP/gRPC exporter reads its endpoint and TLS mode from the standard
 // OTEL_EXPORTER_OTLP_* environment variables (TRACES-specific take precedence).
@@ -21,7 +21,7 @@ import (
 )
 
 // tracerName is the instrumentation scope for spans created here.
-const tracerName = "github.com/shikanime-studio/nix-containers"
+const tracerName = "github.com/shikanime-studio/wharf"
 
 // version mirrors the Nix flake package version (flake.nix packages.default.version).
 const version = "v0.1.0"
@@ -39,7 +39,7 @@ func setupTracing(ctx context.Context) func(context.Context) error {
 	res, err := resource.New(
 		ctx,
 		resource.WithAttributes(
-			semconv.ServiceName("nix-containers"),
+			semconv.ServiceName("wharf"),
 			semconv.ServiceVersion(version),
 		),
 	)

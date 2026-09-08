@@ -86,14 +86,14 @@
             devlib.devenvModules.shikanime-studio
           ];
           packages.default = pkgs.buildGoModule {
-            pname = "nix-containers";
+            pname = "wharf";
             version = "v0.1.0";
             src = lib.cleanSource ./.;
-            subPackages = [ "cmd/nix-containers" ];
+            subPackages = [ "cmd/wharf" ];
             vendorHash = null;
             meta = {
               description = "Nix Containers CLI";
-              homepage = "https://github.com/shikanime-studio/nix-containers";
+              homepage = "https://github.com/shikanime-studio/wharf";
               license = lib.licenses.asl20;
             };
           };

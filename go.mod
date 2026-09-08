@@ -1,4 +1,4 @@
-module github.com/shikanime-studio/nix-containers
+module github.com/shikanime-studio/wharf
 
 go 1.25.2
 
