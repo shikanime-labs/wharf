@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -137,8 +138,12 @@ func TestBuilderBuildAndPushMultiplatformTracksImage(t *testing.T) {
 		{OS: "linux", Architecture: "arm64"},
 	}
 	nixClient := &mockNixBuilderClient{
-		BuildPlatformImageFunc: func(context.Context, string, name.Reference, *v1.Platform, ...imageOption) (string, error) {
-			return "/tmp/result", nil
+		BuildPlatformImagesFunc: func(_ context.Context, _ string, _ name.Reference, platforms []*v1.Platform, _ ...imageOption) ([]string, error) {
+			paths := make([]string, len(platforms))
+			for i := range platforms {
+				paths[i] = fmt.Sprintf("/tmp/result-%d", i)
+			}
+			return paths, nil
 		},
 	}
 	containerClient := &mockContainerBuilderClient{
@@ -152,11 +157,12 @@ func TestBuilderBuildAndPushMultiplatformTracksImage(t *testing.T) {
 		t.Fatalf("multiplatform build and push failed: %v", err)
 	}
 
-	if len(nixClient.BuildPlatformImageCalls()) != 2 {
-		t.Fatalf(
-			"expected one nix build per platform, got %d",
-			len(nixClient.BuildPlatformImageCalls()),
-		)
+	batchCalls := nixClient.BuildPlatformImagesCalls()
+	if len(batchCalls) != 1 {
+		t.Fatalf("expected one batched nix build, got %d", len(batchCalls))
+	}
+	if len(batchCalls[0].Platforms) != 2 {
+		t.Fatalf("expected both platforms in the batch call, got %d", len(batchCalls[0].Platforms))
 	}
 	if len(containerClient.PushPlatformImageCalls()) != 2 {
 		t.Fatalf(
@@ -166,5 +172,31 @@ func TestBuilderBuildAndPushMultiplatformTracksImage(t *testing.T) {
 	}
 	if len(containerClient.PushManifestCalls()) != 1 {
 		t.Fatalf("expected one manifest push, got %d", len(containerClient.PushManifestCalls()))
+	}
+}
+
+func TestBuilderBuildAndPushMultiplatformFailsWhenBatchBuildFails(t *testing.T) {
+	ref := mustParseReference(t)
+	plats := []*v1.Platform{
+		{OS: "linux", Architecture: "amd64"},
+		{OS: "linux", Architecture: "arm64"},
+	}
+	nixClient := &mockNixBuilderClient{
+		BuildPlatformImagesFunc: func(context.Context, string, name.Reference, []*v1.Platform, ...imageOption) ([]string, error) {
+			return nil, errors.New("nix-fast-build failed")
+		},
+	}
+	containerClient := &mockContainerBuilderClient{}
+
+	builder := NewBuilder(nixClient, containerClient, WithPush(true))
+	err := builder.BuildAndPush(context.Background(), "/workspace", ref, plats)
+	if err == nil || !strings.Contains(err.Error(), "nix-fast-build failed") {
+		t.Fatalf("expected batch build error, got %v", err)
+	}
+	if len(containerClient.PushPlatformImageCalls()) != 0 {
+		t.Fatalf(
+			"expected no pushes after failed build, got %d",
+			len(containerClient.PushPlatformImageCalls()),
+		)
 	}
 }
