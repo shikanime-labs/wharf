@@ -138,7 +138,7 @@ func TestBuilderBuildAndPushMultiplatformTracksImage(t *testing.T) {
 		{OS: "linux", Architecture: "arm64"},
 	}
 	nixClient := &mockNixBuilderClient{
-		BuildPlatformImagesFunc: func(_ context.Context, _ string, _ name.Reference, platforms []*v1.Platform, _ ...imageOption) ([]string, error) {
+		BatchBuildPlatformImagesFunc: func(_ context.Context, _ string, _ name.Reference, platforms []*v1.Platform, _ ...imageOption) ([]string, error) {
 			paths := make([]string, len(platforms))
 			for i := range platforms {
 				paths[i] = fmt.Sprintf("/tmp/result-%d", i)
@@ -157,7 +157,7 @@ func TestBuilderBuildAndPushMultiplatformTracksImage(t *testing.T) {
 		t.Fatalf("multiplatform build and push failed: %v", err)
 	}
 
-	batchCalls := nixClient.BuildPlatformImagesCalls()
+	batchCalls := nixClient.BatchBuildPlatformImagesCalls()
 	if len(batchCalls) != 1 {
 		t.Fatalf("expected one batched nix build, got %d", len(batchCalls))
 	}
@@ -182,7 +182,7 @@ func TestBuilderBuildAndPushMultiplatformFailsWhenBatchBuildFails(t *testing.T) 
 		{OS: "linux", Architecture: "arm64"},
 	}
 	nixClient := &mockNixBuilderClient{
-		BuildPlatformImagesFunc: func(context.Context, string, name.Reference, []*v1.Platform, ...imageOption) ([]string, error) {
+		BatchBuildPlatformImagesFunc: func(context.Context, string, name.Reference, []*v1.Platform, ...imageOption) ([]string, error) {
 			return nil, errors.New("nix-fast-build failed")
 		},
 	}

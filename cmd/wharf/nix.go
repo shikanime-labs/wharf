@@ -152,7 +152,7 @@ func (n *NixClient) GetImageBuilderType(
 	}
 
 	system := formatSystemName(p)
-	pkgName := formatNixFlakePackageName(ref)
+	pkgName := formatNixFlakePackageName(ref, buildContext)
 
 	pkgs, ok := showOutput.Packages[system]
 	if !ok {
@@ -326,7 +326,7 @@ type fastBuildMessage struct {
 	Outputs map[string]string `json:"outputs"`
 }
 
-// BuildPlatformImages builds the flake package for every platform in a
+// BatchBuildPlatformImages builds the flake package for every platform in a
 // single nix-fast-build invocation and returns the store paths in platform
 // order. Evaluation is shared (one nix-eval-jobs process) and builds fan
 // out internally, so concurrent per-platform invocations can no longer race
@@ -338,7 +338,7 @@ type fastBuildMessage struct {
 // build path; the current option set is fixed by nix-fast-build itself:
 // accept-flake-config flows through --option, and --no-pure-eval is inert
 // for flake evaluation.
-func (n *NixClient) BuildPlatformImages(
+func (n *NixClient) BatchBuildPlatformImages(
 	ctx context.Context,
 	buildContext string,
 	ref name.Reference,
@@ -349,7 +349,7 @@ func (n *NixClient) BuildPlatformImages(
 		return nil, fmt.Errorf("at least one platform is required")
 	}
 
-	pkgName := formatNixFlakePackageName(ref)
+	pkgName := formatNixFlakePackageName(ref, buildContext)
 	attrs := make([]string, 0, len(plats))
 	systems := make([]string, 0, len(plats))
 	for _, p := range plats {
@@ -380,14 +380,16 @@ func (n *NixClient) BuildPlatformImages(
 	selectExpr := "attrs: {\n" + strings.Join(selectParts, "\n") + "\n}"
 
 	args := []string{
-		"fast-build",
-		"--flake", buildContext + "#packages",
+		"--flake", formatNixFlakePackagesRoot(buildContext),
 		"--select", selectExpr,
 		"--systems", strings.Join(systems, " "),
 		"--option", "accept-flake-config", "true",
 		"--stream-json-lines",
 	}
-	cmd := nixCommandContext(ctx, "nix", args...)
+	// The flake package wraps this binary into PATH via makeWrapper; a
+	// bare `go install` build requires nix-fast-build (and, for its
+	// evaluation workers, nix-eval-jobs) in PATH.
+	cmd := nixCommandContext(ctx, "nix-fast-build", args...)
 	slog.InfoContext(
 		ctx,
 		"start nix-fast-build",

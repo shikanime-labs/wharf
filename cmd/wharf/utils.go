@@ -33,31 +33,38 @@ func formatSystemName(p *v1.Platform) string {
 	return fmt.Sprintf("%s-%s", formatArch(p.Architecture), p.OS)
 }
 
-func formatNixFlakePackageName(ref name.Reference) string {
+// formatNixFlakePackageName resolves the package attribute: an explicit
+// #fragment in the flake URL names it directly (skaffold pins like
+// `.#automata-oci-image`); otherwise the image name's last segment. The
+// `packages.*.` prefix is accepted for readability and stripped.
+func formatNixFlakePackageName(ref name.Reference, flakeURL string) string {
+	if _, frag, hasFrag := strings.Cut(flakeURL, "#"); hasFrag {
+		frag = strings.TrimPrefix(frag, "packages.*.")
+		if frag != "" {
+			return frag
+		}
+	}
 	repo := ref.Context().RepositoryStr()
 	segs := strings.Split(repo, "/")
 	return segs[len(segs)-1]
 }
 
 func formatNixFlakePackage(buildContext string, ref name.Reference, p *v1.Platform) string {
-	url, frag, hasFrag := strings.Cut(buildContext, "#")
-	attr := ""
-	if hasFrag {
-		// An explicit #fragment names the package attribute directly so the
-		// image name does not have to match the flake attribute. It is still
-		// qualified per platform as packages.<system>.<attr>; the
-		// packages.*. spelling is accepted for readability.
-		attr = strings.TrimPrefix(frag, "packages.*.")
-	}
-	if attr == "" {
-		attr = formatNixFlakePackageName(ref)
-	}
+	url, _, _ := strings.Cut(buildContext, "#")
 	return fmt.Sprintf(
 		"%s#packages.%s.%s",
 		url,
 		formatSystemName(p),
-		attr,
+		formatNixFlakePackageName(ref, buildContext),
 	)
+}
+
+// formatNixFlakePackagesRoot returns the flake URL for batch evaluation
+// with any #fragment stripped: nix-fast-build appends its own traversal and
+// a stale fragment would corrupt the reference (`.#attr#packages`).
+func formatNixFlakePackagesRoot(buildContext string) string {
+	url, _, _ := strings.Cut(buildContext, "#")
+	return url + "#packages"
 }
 
 // resolveFlakeURL returns the explicit flake URL when set, otherwise the

@@ -28,7 +28,7 @@ type nixBuilderClient interface {
 		*v1.Platform,
 		...imageOption,
 	) (string, error)
-	BuildPlatformImages(
+	BatchBuildPlatformImages(
 		context.Context,
 		string,
 		name.Reference,
@@ -164,7 +164,7 @@ func (b *Builder) buildAndPushMultiplatformImage(
 		attribute.String("ref", ref.Name()),
 		attribute.Int("platform_count", len(ps)),
 	)
-	paths, err := b.nix.BuildPlatformImages(bctx, buildContext, ref, ps, b.imageOpts...)
+	paths, err := b.nix.BatchBuildPlatformImages(bctx, buildContext, ref, ps, b.imageOpts...)
 	bspan.End()
 	if err != nil {
 		return fmt.Errorf("build images failed: %w", err)
