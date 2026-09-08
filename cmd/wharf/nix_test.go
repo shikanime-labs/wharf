@@ -285,3 +285,104 @@ func TestNixClientBuildPlatformImageFormatsFlakeTarget(t *testing.T) {
 		"/workspace#packages.x86_64-linux.app",
 	)
 }
+
+func TestNixClientBuildPlatformImagesBuildsBatch(t *testing.T) {
+	argsFile := setupNixCommandTest(
+		t,
+		`{"type":"BUILD","attr":"x86_64-linux.app","success":true,"outputs":{"out":"/nix/store/app"}}`+"\n"+
+			`{"type":"BUILD","attr":"aarch64-linux.app","success":true,"outputs":{"out":"/nix/store/app-arm"}}`+"\n",
+		"",
+		0,
+	)
+
+	ref := mustParseReference(t)
+	got, err := NewNixClient().BuildPlatformImages(
+		context.Background(),
+		"/workspace",
+		ref,
+		[]*v1.Platform{
+			{OS: "linux", Architecture: "amd64"},
+			{OS: "linux", Architecture: "arm64"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("build platform images failed: %v", err)
+	}
+	want := []string{"/nix/store/app", "/nix/store/app-arm"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+
+	assertCapturedCommandArgs(
+		t,
+		argsFile,
+		"nix",
+		"fast-build",
+		"--flake",
+		"/workspace#packages",
+		"--select",
+		"attrs: {\n  \"x86_64-linux\".\"app\" = attrs.\"x86_64-linux\".\"app\";\n  \"aarch64-linux\".\"app\" = attrs.\"aarch64-linux\".\"app\";\n}",
+		"--systems",
+		"x86_64-linux aarch64-linux",
+		"--option",
+		"accept-flake-config",
+		"true",
+		"--stream-json-lines",
+	)
+}
+
+func TestNixClientBuildPlatformImagesReportsFailedAttrs(t *testing.T) {
+	setupNixCommandTest(
+		t,
+		`{"type":"BUILD","attr":"x86_64-linux.app","success":true,"outputs":{"out":"/nix/store/app"}}`+"\n"+
+			`{"type":"BUILD","attr":"aarch64-linux.app","success":false,"error":"build failed"}`+"\n",
+		"error: builder for aarch64-linux failed",
+		1,
+	)
+
+	ref := mustParseReference(t)
+	_, err := NewNixClient().BuildPlatformImages(
+		context.Background(),
+		"/workspace",
+		ref,
+		[]*v1.Platform{
+			{OS: "linux", Architecture: "amd64"},
+			{OS: "linux", Architecture: "arm64"},
+		},
+	)
+	if err == nil {
+		t.Fatal("expected build failure")
+	}
+	if !strings.Contains(err.Error(), "failed to wait for command") {
+		t.Fatalf("expected wait error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "error: builder for aarch64-linux failed") {
+		t.Fatalf("expected stderr in error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "failed attrs: aarch64-linux.app") {
+		t.Fatalf("expected failed attr in error, got %v", err)
+	}
+}
+
+func TestNixClientBuildPlatformImagesRejectsMissingResult(t *testing.T) {
+	setupNixCommandTest(
+		t,
+		`{"type":"BUILD","attr":"x86_64-linux.app","success":true,"outputs":{"out":"/nix/store/app"}}`+"\n",
+		"",
+		0,
+	)
+
+	ref := mustParseReference(t)
+	_, err := NewNixClient().BuildPlatformImages(
+		context.Background(),
+		"/workspace",
+		ref,
+		[]*v1.Platform{
+			{OS: "linux", Architecture: "amd64"},
+			{OS: "linux", Architecture: "arm64"},
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "no result for aarch64-linux.app") {
+		t.Fatalf("expected missing result error, got %v", err)
+	}
+}
