@@ -13,14 +13,14 @@ var (
 		Short: "Commands for Skaffold integration",
 		Long:  "Subcommands intended to be invoked by Skaffold custom builders to build and push images using Nix flakes.",
 		Example: "# Build via Skaffold custom builder\n" +
-			"./nix-containers skaffold build --accept-flake-config",
+			"./wharf skaffold build --accept-flake-config",
 	}
 
 	skaffoldBuildCmd = &cobra.Command{
 		Use:     "build",
 		Short:   "Build and optionally push images",
 		Long:    "Builds OCI images from a Nix flake and optionally pushes them to a registry. Configure via env vars: IMAGE, PLATFORMS, BUILD_CONTEXT, PUSH_IMAGE, LOG_LEVEL, ACCEPT_FLAKE_CONFIG.",
-		Example: "IMAGE=ghcr.io/you/app:latest PLATFORMS=linux/amd64 PUSH_IMAGE=true BUILD_CONTEXT=. ACCEPT_FLAKE_CONFIG=true ./nix-containers skaffold build",
+		Example: "IMAGE=ghcr.io/you/app:latest PLATFORMS=linux/amd64 PUSH_IMAGE=true BUILD_CONTEXT=. ACCEPT_FLAKE_CONFIG=true ./wharf skaffold build",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
 			debug := getDebug()

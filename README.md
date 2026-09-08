@@ -1,4 +1,4 @@
-# nix-containers
+# wharf
 
 Build OCI images from Nix flakes, with optional multi-platform output and push
 to registries. Designed for use as a Skaffold custom builder, but usable
@@ -6,15 +6,15 @@ directly from the CLI as well.
 
 ## Installation
 
-- Go install: `go install github.com/shikanime-studio/nix-containers@latest`
-- From source: `go build -o nix-containers .`
+- Go install: `go install github.com/shikanime-studio/wharf@latest`
+- From source: `go build -o wharf .`
 
 ## Commands
 
-- `nix-containers build [BUILD_CONTEXT]`
+- `wharf build [BUILD_CONTEXT]`
   - Builds images from the flake at `BUILD_CONTEXT` (positional, e.g., `.`) and
     optionally pushes.
-- `nix-containers skaffold build`
+- `wharf skaffold build`
   - Intended for Skaffold custom builders; reads `BUILD_CONTEXT` from env.
 
 ## Flags
@@ -46,20 +46,20 @@ directly from the CLI as well.
 ### Direct CLI
 
 - Single platform build (no push):
-  - `IMAGE=ghcr.io/you/app:latest ./nix-containers build .`
+  - `IMAGE=ghcr.io/you/app:latest ./wharf build .`
 
 - Multi-platform build and push via env:
 
   ```text
   IMAGE=ghcr.io/you/app:latest PLATFORMS=linux/amd64,linux/arm64 \
-    PUSH_IMAGE=true ./nix-containers build .
+    PUSH_IMAGE=true ./wharf build .
   ```
 
 - Multi-platform build via flag and accept flake config:
 
   ```text
   IMAGE=ghcr.io/you/app:latest PUSH_IMAGE=true \
-    ./nix-containers build --platforms linux/amd64,linux/arm64 \
+    ./wharf build --platforms linux/amd64,linux/arm64 \
     --accept-flake-config .
   ```
 
@@ -69,12 +69,12 @@ directly from the CLI as well.
 apiVersion: skaffold/v4beta11
 kind: Config
 metadata:
-  name: nix-containers
+  name: wharf
 build:
   artifacts:
     - image: ghcr.io/you/app:latest
       custom:
-        buildCommand: ./nix-containers skaffold build --accept-flake-config
+        buildCommand: ./wharf skaffold build --accept-flake-config
 deploy:
   kubectl:
     manifests:

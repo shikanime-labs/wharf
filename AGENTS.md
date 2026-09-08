@@ -9,10 +9,9 @@ directly from the CLI.
 ## Structure
 
 - `main.go` — root + `build`/`push` CLI command
-- `cmd/nix-containers/` — all package code: CLI commands (`main.go`,
-  `skaffold.go`), builder (`builder.go`), container runtime client
-  (`container.go`), Nix build logic (`nix.go`, `nix_test.go`), and tracing
-  (`tracing.go`)
+- `cmd/wharf/` — all package code: CLI commands (`main.go`, `skaffold.go`),
+  builder (`builder.go`), container runtime client (`container.go`), Nix build
+  logic (`nix.go`, `nix_test.go`), and tracing (`tracing.go`)
 - `flake.nix` — Dev shell and `packages.default` (broken via `buildGoModule`,
   offline `vendorHash = null` so deps fetch from the proxy rather than
   `vendor/`)

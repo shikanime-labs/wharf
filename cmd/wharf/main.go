@@ -11,13 +11,13 @@ import (
 
 var (
 	rootCmd = &cobra.Command{
-		Use:   "nix-containers",
+		Use:   "wharf",
 		Short: "Build OCI images from Nix flakes",
 		Long:  "CLI to build and optionally push OCI images produced from Nix flakes. Primarily intended for Skaffold custom builders. Configure via env vars: IMAGE, PLATFORMS, BUILD_CONTEXT, PUSH_IMAGE, LOG_LEVEL, ACCEPT_FLAKE_CONFIG.",
 		Example: "# Show help\n" +
-			"nix-containers --help\n\n" +
+			"wharf --help\n\n" +
 			"# Build via Skaffold custom builder\n" +
-			"IMAGE=ghcr.io/you/app:latest PLATFORMS=linux/amd64 BUILD_CONTEXT=. PUSH_IMAGE=true nix-containers skaffold build",
+			"IMAGE=ghcr.io/you/app:latest PLATFORMS=linux/amd64 BUILD_CONTEXT=. PUSH_IMAGE=true wharf skaffold build",
 	}
 
 	buildCmd = &cobra.Command{
@@ -25,7 +25,7 @@ var (
 		Short: "Build and optionally push images (root variant)",
 		Long:  "Builds OCI images from a Nix flake at BUILD_CONTEXT and optionally pushes them. Configure via env vars: IMAGE, PLATFORMS, PUSH_IMAGE, LOG_LEVEL, ACCEPT_FLAKE_CONFIG.",
 		Example: "# Build from current directory and push\n" +
-			"IMAGE=ghcr.io/you/app:latest PLATFORMS=linux/amd64 PUSH_IMAGE=true ./nix-containers build .",
+			"IMAGE=ghcr.io/you/app:latest PLATFORMS=linux/amd64 PUSH_IMAGE=true ./wharf build .",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			debug := getDebug()
