@@ -40,11 +40,23 @@ func formatNixFlakePackageName(ref name.Reference) string {
 }
 
 func formatNixFlakePackage(buildContext string, ref name.Reference, p *v1.Platform) string {
+	url, frag, hasFrag := strings.Cut(buildContext, "#")
+	attr := ""
+	if hasFrag {
+		// An explicit #fragment names the package attribute directly so the
+		// image name does not have to match the flake attribute. It is still
+		// qualified per platform as packages.<system>.<attr>; the
+		// packages.*. spelling is accepted for readability.
+		attr = strings.TrimPrefix(frag, "packages.*.")
+	}
+	if attr == "" {
+		attr = formatNixFlakePackageName(ref)
+	}
 	return fmt.Sprintf(
 		"%s#packages.%s.%s",
-		buildContext,
+		url,
 		formatSystemName(p),
-		formatNixFlakePackageName(ref),
+		attr,
 	)
 }
 
