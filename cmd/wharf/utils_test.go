@@ -31,6 +31,47 @@ func TestFormatNixFlakePackage(t *testing.T) {
 	}
 }
 
+func TestFormatNixFlakePackageFragment(t *testing.T) {
+	tests := []struct {
+		name         string
+		buildContext string
+		expected     string
+	}{
+		{
+			name:         "fragment attr overrides image name",
+			buildContext: ".#catbox-oci-image",
+			expected:     ".#packages.x86_64-linux.catbox-oci-image",
+		},
+		{
+			name:         "packages.*. fragment spelling accepted",
+			buildContext: ".#packages.*.llama-cpp",
+			expected:     ".#packages.x86_64-linux.llama-cpp",
+		},
+		{
+			name:         "bare fragment falls back to image name",
+			buildContext: ".#",
+			expected:     ".#packages.x86_64-linux.catbox",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ref, err := name.ParseReference("ghcr.io/shikanime/shikanime/catbox:latest")
+			if err != nil {
+				t.Fatalf("parse reference failed: %v", err)
+			}
+			got := formatNixFlakePackage(
+				tt.buildContext,
+				ref,
+				&v1.Platform{OS: "linux", Architecture: "amd64"},
+			)
+			if got != tt.expected {
+				t.Fatalf("expected %s, got %s", tt.expected, got)
+			}
+		})
+	}
+}
+
 func TestResolveFlakeURL(t *testing.T) {
 	tests := []struct {
 		name         string
