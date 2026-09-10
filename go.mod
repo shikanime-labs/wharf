@@ -1,6 +1,6 @@
 module github.com/shikanime-studio/wharf
 
-go 1.25.2
+go 1.26.0
 
 require (
 	github.com/docker/docker v28.5.2+incompatible
@@ -11,7 +11,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.45.0
 	go.opentelemetry.io/otel/sdk v1.45.0
 	go.opentelemetry.io/otel/trace v1.45.0
-	golang.org/x/sync v0.22.0
+	golang.org/x/sync v0.23.0
 )
 
 require (
