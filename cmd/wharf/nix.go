@@ -333,17 +333,12 @@ type fastBuildMessage struct {
 // the shared eval-cache SQLite database — the root cause of doubled
 // `packages.<system>.` attribute segments and "failed to parse nix build
 // output: EOF" (see issue #98, previously mitigated by a mutex).
-//
-// The imageOption variadic exists for interface parity with the single
-// build path; the current option set is fixed by nix-fast-build itself:
-// accept-flake-config flows through --option, and --no-pure-eval is inert
-// for flake evaluation.
 func (n *NixClient) BatchBuildPlatformImages(
 	ctx context.Context,
 	buildContext string,
 	ref name.Reference,
 	plats []*v1.Platform,
-	_ ...imageOption,
+	opts ...imageOption,
 ) ([]string, error) {
 	if len(plats) == 0 {
 		return nil, fmt.Errorf("at least one platform is required")
@@ -379,13 +374,16 @@ func (n *NixClient) BatchBuildPlatformImages(
 	}
 	selectExpr := "attrs: {\n" + strings.Join(selectParts, "\n") + "\n}"
 
+	o := makeImageOptions(opts...)
 	args := []string{
 		"--flake", formatNixFlakePackagesRoot(buildContext),
 		"--select", selectExpr,
 		"--systems", strings.Join(systems, " "),
-		"--option", "accept-flake-config", "true",
-		"--stream-json-lines",
 	}
+	for i := 0; i+1 < len(o.options); i += 2 {
+		args = append(args, "--option", o.options[i], o.options[i+1])
+	}
+	args = append(args, "--stream-json-lines")
 	// The flake package wraps this binary into PATH via makeWrapper; a
 	// bare `go install` build requires nix-fast-build (and, for its
 	// evaluation workers, nix-eval-jobs) in PATH.

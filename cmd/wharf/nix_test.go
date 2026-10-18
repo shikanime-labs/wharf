@@ -331,6 +331,7 @@ func TestNixClientBatchBuildPlatformImagesBuildsBatch(t *testing.T) {
 			{OS: "linux", Architecture: "amd64"},
 			{OS: "linux", Architecture: "arm64"},
 		},
+		WithOption("accept-flake-config", "true"),
 	)
 	if err != nil {
 		t.Fatalf("build platform images failed: %v", err)
