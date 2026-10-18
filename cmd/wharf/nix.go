@@ -373,12 +373,10 @@ func (n *NixClient) BatchBuildPlatformImages(
 		systems = append(systems, system)
 	}
 
-	selectExpr := formatSelectExpr(systems, pkgName)
-
 	o := makeImageOptions(opts...)
 	args := []string{
 		"--flake", formatNixFlakePackagesRoot(buildContext),
-		"--select", selectExpr,
+		"--select", formatSelectExpr(systems, pkgName),
 		"--systems", strings.Join(systems, " "),
 	}
 	for i := 0; i+1 < len(o.options); i += 2 {
