@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -467,26 +469,24 @@ func TestBatchBuildPlatformImagesRealNix(t *testing.T) {
 	}
 }
 
-func TestDecodeFastBuildResults(t *testing.T) {
-	in := `{"type":"INFO","msg":"eval"}
-{"type":"BUILD","attr":"x86_64-linux.app","success":false,"outputs":{"out":"/nix/store/bad"}}
-{"type":"BUILD","attr":"x86_64-linux.app","success":true,"outputs":{"out":"/nix/store/app"}}
-{"type":"BUILD","attr":"aarch64-linux.app","success":true,"outputs":{}}
-{"type":"BUILD","attr":"aarch64-linux.app","success":true,"outputs":{"out":"/nix/store/app-arm"}}
-`
-	got, err := newFastBuildDecoder(strings.NewReader(in)).results()
-	if err != nil {
-		t.Fatalf("decode failed: %v", err)
+func TestFastBuildDecoderMessage(t *testing.T) {
+	in := "{\"type\":\"INFO\",\"msg\":\"eval\"}\n" +
+		"{\"type\":\"BUILD\",\"attr\":\"x86_64-linux.app\",\"success\":true,\"outputs\":{\"out\":\"/nix/store/app\"}}\n"
+	dec := newFastBuildDecoder(strings.NewReader(in))
+
+	msg, err := dec.Message()
+	if err != nil || msg.Type != "INFO" {
+		t.Fatalf("expected INFO message, got %+v err %v", msg, err)
 	}
-	want := map[string]string{
-		"x86_64-linux.app":  "/nix/store/app",
-		"aarch64-linux.app": "/nix/store/app-arm",
+	msg, err = dec.Message()
+	if err != nil || msg.Attr != "x86_64-linux.app" || msg.Outputs["out"] != "/nix/store/app" {
+		t.Fatalf("expected BUILD message, got %+v err %v", msg, err)
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("expected %q, got %q", want, got)
+	if _, err := dec.Message(); !errors.Is(err, io.EOF) {
+		t.Fatalf("expected io.EOF at stream end, got %v", err)
 	}
 
-	if _, err := newFastBuildDecoder(strings.NewReader("{not json")).results(); err == nil {
+	if _, err := newFastBuildDecoder(strings.NewReader("{not json")).Message(); err == nil {
 		t.Fatalf("expected error for malformed stream")
 	}
 }

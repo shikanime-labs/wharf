@@ -354,8 +354,8 @@ func formatSelectExpr(systems []string, pkgName string) string {
 // `packages.<system>.` attribute segments and "failed to parse nix build
 // output: EOF" (see issue #98, previously mitigated by a mutex).
 // fastBuildDecoder abstracts the nix-fast-build --stream-json-lines
-// wire format: a sequence of JSON messages of which only successful
-// BUILD results carry output paths.
+// wire format with a json.Decoder-shaped API: construct from a reader,
+// pull one message per call until io.EOF.
 type fastBuildDecoder struct {
 	dec *json.Decoder
 }
@@ -364,28 +364,13 @@ func newFastBuildDecoder(r io.Reader) *fastBuildDecoder {
 	return &fastBuildDecoder{dec: json.NewDecoder(bufio.NewReader(r))}
 }
 
-// results drains the stream and collects each successful BUILD's out
-// path keyed by attribute. Non-BUILD messages and failures are skipped;
-// EOF ends the stream.
-func (d *fastBuildDecoder) results() (map[string]string, error) {
-	results := make(map[string]string)
-	for {
-		var msg fastBuildMessage
-		if err := d.dec.Decode(&msg); err != nil {
-			if errors.Is(err, io.EOF) {
-				return results, nil
-			}
-			return nil, err
-		}
-		if msg.Type != "BUILD" || !msg.Success {
-			continue
-		}
-		out, ok := msg.Outputs["out"]
-		if !ok {
-			continue
-		}
-		results[msg.Attr] = out
+// Message returns the next message in the stream; io.EOF marks the end.
+func (d *fastBuildDecoder) Message() (fastBuildMessage, error) {
+	var msg fastBuildMessage
+	if err := d.dec.Decode(&msg); err != nil {
+		return fastBuildMessage{}, err
 	}
+	return msg, nil
 }
 
 func (n *NixClient) BatchBuildPlatformImages(
@@ -455,15 +440,28 @@ func (n *NixClient) BatchBuildPlatformImages(
 		return handleNixBuild(sc, &stderrOutput, &stderrMu)
 	})
 
-	results, err := newFastBuildDecoder(stdoutPipe).results()
-	if err != nil {
-		return nil, handleNixBuildError(
-			ctx,
-			buildContext,
-			fmt.Errorf("failed to parse nix-fast-build output: %w", err),
-			&stderrOutput,
-			&stderrMu,
-		)
+	fbdec := newFastBuildDecoder(stdoutPipe)
+	results := make(map[string]string, len(attrs))
+	for {
+		msg, err := fbdec.Message()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, handleNixBuildError(
+				ctx,
+				buildContext,
+				fmt.Errorf("failed to parse nix-fast-build output: %w", err),
+				&stderrOutput,
+				&stderrMu,
+			)
+		}
+		if msg.Type != "BUILD" || !msg.Success {
+			continue
+		}
+		if out, ok := msg.Outputs["out"]; ok {
+			results[msg.Attr] = out
+		}
 	}
 
 	if err := wg.Wait(); err != nil {
