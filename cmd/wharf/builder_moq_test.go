@@ -5,11 +5,10 @@ package main
 
 import (
 	"context"
-	"sync"
-
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
+	"sync"
 )
 
 // Ensure, that mockNixBuilderClient does implement nixBuilderClient.
@@ -22,6 +21,9 @@ var _ nixBuilderClient = &mockNixBuilderClient{}
 //
 //		// make and configure a mocked nixBuilderClient
 //		mockednixBuilderClient := &mockNixBuilderClient{
+//			BatchBuildPlatformImagesFunc: func(contextMoqParam context.Context, s string, reference name.Reference, platforms []*v1.Platform, imageOptionMoqParams ...imageOption) ([]string, error) {
+//				panic("mock out the BatchBuildPlatformImages method")
+//			},
 //			BuildPlatformImageFunc: func(contextMoqParam context.Context, s string, reference name.Reference, platform *v1.Platform, imageOptionMoqParams ...imageOption) (string, error) {
 //				panic("mock out the BuildPlatformImage method")
 //			},
@@ -32,11 +34,27 @@ var _ nixBuilderClient = &mockNixBuilderClient{}
 //
 //	}
 type mockNixBuilderClient struct {
+	// BatchBuildPlatformImagesFunc mocks the BatchBuildPlatformImages method.
+	BatchBuildPlatformImagesFunc func(contextMoqParam context.Context, s string, reference name.Reference, platforms []*v1.Platform, imageOptionMoqParams ...imageOption) ([]string, error)
+
 	// BuildPlatformImageFunc mocks the BuildPlatformImage method.
 	BuildPlatformImageFunc func(contextMoqParam context.Context, s string, reference name.Reference, platform *v1.Platform, imageOptionMoqParams ...imageOption) (string, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
+		// BatchBuildPlatformImages holds details about calls to the BatchBuildPlatformImages method.
+		BatchBuildPlatformImages []struct {
+			// ContextMoqParam is the contextMoqParam argument value.
+			ContextMoqParam context.Context
+			// S is the s argument value.
+			S string
+			// Reference is the reference argument value.
+			Reference name.Reference
+			// Platforms is the platforms argument value.
+			Platforms []*v1.Platform
+			// ImageOptionMoqParams is the imageOptionMoqParams argument value.
+			ImageOptionMoqParams []imageOption
+		}
 		// BuildPlatformImage holds details about calls to the BuildPlatformImage method.
 		BuildPlatformImage []struct {
 			// ContextMoqParam is the contextMoqParam argument value.
@@ -51,7 +69,60 @@ type mockNixBuilderClient struct {
 			ImageOptionMoqParams []imageOption
 		}
 	}
-	lockBuildPlatformImage sync.RWMutex
+	lockBatchBuildPlatformImages sync.RWMutex
+	lockBuildPlatformImage       sync.RWMutex
+}
+
+// BatchBuildPlatformImages calls BatchBuildPlatformImagesFunc.
+func (mock *mockNixBuilderClient) BatchBuildPlatformImages(contextMoqParam context.Context, s string, reference name.Reference, platforms []*v1.Platform, imageOptionMoqParams ...imageOption) ([]string, error) {
+	callInfo := struct {
+		ContextMoqParam      context.Context
+		S                    string
+		Reference            name.Reference
+		Platforms            []*v1.Platform
+		ImageOptionMoqParams []imageOption
+	}{
+		ContextMoqParam:      contextMoqParam,
+		S:                    s,
+		Reference:            reference,
+		Platforms:            platforms,
+		ImageOptionMoqParams: imageOptionMoqParams,
+	}
+	mock.lockBatchBuildPlatformImages.Lock()
+	mock.calls.BatchBuildPlatformImages = append(mock.calls.BatchBuildPlatformImages, callInfo)
+	mock.lockBatchBuildPlatformImages.Unlock()
+	if mock.BatchBuildPlatformImagesFunc == nil {
+		var (
+			stringsOut []string
+			errOut     error
+		)
+		return stringsOut, errOut
+	}
+	return mock.BatchBuildPlatformImagesFunc(contextMoqParam, s, reference, platforms, imageOptionMoqParams...)
+}
+
+// BatchBuildPlatformImagesCalls gets all the calls that were made to BatchBuildPlatformImages.
+// Check the length with:
+//
+//	len(mockednixBuilderClient.BatchBuildPlatformImagesCalls())
+func (mock *mockNixBuilderClient) BatchBuildPlatformImagesCalls() []struct {
+	ContextMoqParam      context.Context
+	S                    string
+	Reference            name.Reference
+	Platforms            []*v1.Platform
+	ImageOptionMoqParams []imageOption
+} {
+	var calls []struct {
+		ContextMoqParam      context.Context
+		S                    string
+		Reference            name.Reference
+		Platforms            []*v1.Platform
+		ImageOptionMoqParams []imageOption
+	}
+	mock.lockBatchBuildPlatformImages.RLock()
+	calls = mock.calls.BatchBuildPlatformImages
+	mock.lockBatchBuildPlatformImages.RUnlock()
+	return calls
 }
 
 // BuildPlatformImage calls BuildPlatformImageFunc.
@@ -195,7 +266,9 @@ func (mock *mockContainerBuilderClient) CheckPushPermission(reference name.Refer
 	mock.calls.CheckPushPermission = append(mock.calls.CheckPushPermission, callInfo)
 	mock.lockCheckPushPermission.Unlock()
 	if mock.CheckPushPermissionFunc == nil {
-		var errOut error
+		var (
+			errOut error
+		)
 		return errOut
 	}
 	return mock.CheckPushPermissionFunc(reference)
@@ -230,7 +303,9 @@ func (mock *mockContainerBuilderClient) PushImage(reference name.Reference, s st
 	mock.calls.PushImage = append(mock.calls.PushImage, callInfo)
 	mock.lockPushImage.Unlock()
 	if mock.PushImageFunc == nil {
-		var errOut error
+		var (
+			errOut error
+		)
 		return errOut
 	}
 	return mock.PushImageFunc(reference, s)
@@ -267,7 +342,9 @@ func (mock *mockContainerBuilderClient) PushManifest(reference name.Reference, i
 	mock.calls.PushManifest = append(mock.calls.PushManifest, callInfo)
 	mock.lockPushManifest.Unlock()
 	if mock.PushManifestFunc == nil {
-		var errOut error
+		var (
+			errOut error
+		)
 		return errOut
 	}
 	return mock.PushManifestFunc(reference, indexAddendums)

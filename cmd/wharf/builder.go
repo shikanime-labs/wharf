@@ -28,6 +28,13 @@ type nixBuilderClient interface {
 		*v1.Platform,
 		...imageOption,
 	) (string, error)
+	BatchBuildPlatformImages(
+		context.Context,
+		string,
+		name.Reference,
+		[]*v1.Platform,
+		...imageOption,
+	) ([]string, error)
 }
 
 type containerBuilderClient interface {
@@ -149,25 +156,29 @@ func (b *Builder) buildAndPushMultiplatformImage(
 	var adds []mutate.IndexAddendum
 	var addsMu sync.Mutex
 	slog.InfoContext(ctx, "build multiplatform image", "ref", ref.Name(), "platform_count", len(ps))
+
+	// One batched nix-fast-build invocation builds every platform: a
+	// single evaluation feeds parallel builds internally, so per-platform
+	// nix processes can no longer race the shared eval-cache (issue #98).
+	bctx, bspan := startSpan(ctx, "nix.build.batch",
+		attribute.String("ref", ref.Name()),
+		attribute.Int("platform_count", len(ps)),
+	)
+	paths, err := b.nix.BatchBuildPlatformImages(bctx, buildContext, ref, ps, b.imageOpts...)
+	bspan.End()
+	if err != nil {
+		return fmt.Errorf("build images failed: %w", err)
+	}
+
 	wg, ctx := errgroup.WithContext(ctx)
-	for _, p := range ps {
-		p := p
+	for i, p := range ps {
+		p, path := p, paths[i]
 		wg.Go(func() error {
-			pctx, pspan := startSpan(ctx, "nix.build.platform",
+			_, pspan := startSpan(ctx, "nix.build.platform",
 				attribute.String("ref", ref.Name()),
 				attribute.String("platform", formatSystemName(p)),
 			)
 			defer pspan.End()
-			slog.InfoContext(
-				ctx,
-				"platform pipeline started",
-				"ref", ref.Name(),
-				"platform", formatSystemName(p),
-			)
-			path, err := b.buildPlatformPath(pctx, buildContext, ref, p)
-			if err != nil {
-				return err
-			}
 			slog.InfoContext(
 				ctx,
 				"platform image built",

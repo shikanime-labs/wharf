@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os/exec"
 	"strings"
@@ -150,7 +152,7 @@ func (n *NixClient) GetImageBuilderType(
 	}
 
 	system := formatSystemName(p)
-	pkgName := formatNixFlakePackageName(ref)
+	pkgName := formatNixFlakePackageName(ref, buildContext)
 
 	pkgs, ok := showOutput.Packages[system]
 	if !ok {
@@ -313,4 +315,192 @@ func (n *NixClient) BuildImage(
 		result[0].Outputs["out"],
 	)
 	return result[0].Outputs["out"], nil
+}
+
+// fastBuildMessage is one JSON line of `nix-fast-build --stream-json-lines`.
+// Only BUILD results carry the final outputs for an attribute.
+type fastBuildMessage struct {
+	Type    string            `json:"type"`
+	Attr    string            `json:"attr"`
+	Success bool              `json:"success"`
+	Outputs map[string]string `json:"outputs"`
+}
+
+// formatSelectExpr builds the nix-fast-build --select function, a nested
+// attrset rebuilt from real attrpath segments: nix-eval-jobs requires an
+// attrset traversal root, and `builtins.getAttr "system.name"` (or
+// `attrs ? system.name`) performs a single-component lookup that never
+// matches nested keys — such a select silently filters out every job.
+// Quoted segments keep any package name valid; duplicate systems are
+// collapsed (distinct platforms already cover the legal set).
+func formatSelectExpr(systems []string, pkgName string) string {
+	seen := make(map[string]bool, len(systems))
+	parts := make([]string, 0, len(systems))
+	for _, system := range systems {
+		if seen[system] {
+			continue
+		}
+		seen[system] = true
+		parts = append(parts, fmt.Sprintf(`  %q.%q = attrs.%q.%q;`, system, pkgName, system, pkgName))
+	}
+	return "attrs: {\n" + strings.Join(parts, "\n") + "\n}"
+}
+
+// BatchBuildPlatformImages builds the flake package for every platform in a
+// single nix-fast-build invocation and returns the store paths in platform
+// order. Evaluation is shared (one nix-eval-jobs process) and builds fan
+// out internally, so concurrent per-platform invocations can no longer race
+// the shared eval-cache SQLite database — the root cause of doubled
+// `packages.<system>.` attribute segments and "failed to parse nix build
+// output: EOF" (see issue #98, previously mitigated by a mutex).
+// fastBuildDecoder abstracts the nix-fast-build --stream-json-lines
+// wire format with a json.Decoder-shaped API: construct from a reader,
+// pull one message per call until io.EOF.
+type fastBuildDecoder struct {
+	dec *json.Decoder
+}
+
+func newFastBuildDecoder(r io.Reader) *fastBuildDecoder {
+	return &fastBuildDecoder{dec: json.NewDecoder(bufio.NewReader(r))}
+}
+
+// Message returns the next message in the stream; io.EOF marks the end.
+func (d *fastBuildDecoder) Message() (fastBuildMessage, error) {
+	var msg fastBuildMessage
+	if err := d.dec.Decode(&msg); err != nil {
+		return fastBuildMessage{}, err
+	}
+	return msg, nil
+}
+
+func (n *NixClient) BatchBuildPlatformImages(
+	ctx context.Context,
+	buildContext string,
+	ref name.Reference,
+	plats []*v1.Platform,
+	opts ...imageOption,
+) ([]string, error) {
+	if len(plats) == 0 {
+		return nil, fmt.Errorf("at least one platform is required")
+	}
+
+	pkgName := formatNixFlakePackageName(ref, buildContext)
+	attrs := make([]string, 0, len(plats))
+	systems := make([]string, 0, len(plats))
+	for _, p := range plats {
+		system := formatSystemName(p)
+		attrs = append(attrs, fmt.Sprintf("%s.%s", system, pkgName))
+		systems = append(systems, system)
+	}
+
+	o := makeImageOptions(opts...)
+	args := []string{
+		"--flake", formatNixFlakePackagesRoot(buildContext),
+		"--select", formatSelectExpr(systems, pkgName),
+		"--systems", strings.Join(systems, " "),
+	}
+	for i := 0; i+1 < len(o.options); i += 2 {
+		args = append(args, "--option", o.options[i], o.options[i+1])
+	}
+	args = append(args, "--stream-json-lines")
+	// The flake package wraps this binary into PATH via makeWrapper; a
+	// bare `go install` build requires nix-fast-build (and, for its
+	// evaluation workers, nix-eval-jobs) in PATH.
+	cmd := nixCommandContext(ctx, "nix-fast-build", args...)
+	slog.InfoContext(
+		ctx,
+		"start nix-fast-build",
+		"flake",
+		buildContext,
+		"attrs",
+		attrs,
+		"args",
+		args,
+	)
+
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create stdout pipe: %w", err)
+	}
+
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create stderr pipe: %w", err)
+	}
+	sc := bufio.NewScanner(stderrPipe)
+	var stderrOutput strings.Builder
+	var stderrMu sync.Mutex
+
+	if err = cmd.Start(); err != nil {
+		return nil, fmt.Errorf("failed to run command: %w", err)
+	}
+
+	wg := errgroup.Group{}
+	wg.Go(func() error {
+		return handleNixBuild(sc, &stderrOutput, &stderrMu)
+	})
+
+	fbdec := newFastBuildDecoder(stdoutPipe)
+	results := make(map[string]string, len(attrs))
+	for {
+		msg, err := fbdec.Message()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, handleNixBuildError(
+				ctx,
+				buildContext,
+				fmt.Errorf("failed to parse nix-fast-build output: %w", err),
+				&stderrOutput,
+				&stderrMu,
+			)
+		}
+		if msg.Type != "BUILD" || !msg.Success {
+			continue
+		}
+		if out, ok := msg.Outputs["out"]; ok {
+			results[msg.Attr] = out
+		}
+	}
+
+	if err := wg.Wait(); err != nil {
+		return nil, handleNixBuildError(
+			ctx,
+			buildContext,
+			fmt.Errorf("failed to wait for command: %w", err),
+			&stderrOutput,
+			&stderrMu,
+		)
+	}
+	if err := cmd.Wait(); err != nil {
+		err = handleNixBuildError(
+			ctx,
+			buildContext,
+			fmt.Errorf("failed to wait for command: %w", err),
+			&stderrOutput,
+			&stderrMu,
+		)
+		var failed []string
+		for _, attr := range attrs {
+			if _, ok := results[attr]; !ok {
+				failed = append(failed, attr)
+			}
+		}
+		if len(failed) > 0 {
+			err = fmt.Errorf("%w (failed attrs: %s)", err, strings.Join(failed, ", "))
+		}
+		return nil, err
+	}
+
+	paths := make([]string, 0, len(plats))
+	for _, attr := range attrs {
+		out, ok := results[attr]
+		if !ok {
+			return nil, fmt.Errorf("nix-fast-build produced no result for %s", attr)
+		}
+		paths = append(paths, out)
+	}
+	slog.InfoContext(ctx, "nix-fast-build completed", "flake", buildContext, "paths", paths)
+	return paths, nil
 }

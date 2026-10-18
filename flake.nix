@@ -91,6 +91,19 @@
             src = lib.cleanSource ./.;
             subPackages = [ "cmd/wharf" ];
             vendorHash = null;
+            nativeBuildInputs = [ pkgs.makeWrapper ];
+            postInstall = ''
+              wrapProgram $out/bin/wharf --prefix PATH : ${
+                pkgs.lib.makeBinPath (
+                  with pkgs;
+                  [
+                    nix
+                    nix-fast-build
+                    nix-eval-jobs
+                  ]
+                )
+              }
+            '';
             meta = {
               description = "Nix Containers CLI";
               homepage = "https://github.com/shikanime-studio/wharf";
