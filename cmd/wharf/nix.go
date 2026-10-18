@@ -353,6 +353,31 @@ func formatSelectExpr(systems []string, pkgName string) string {
 // the shared eval-cache SQLite database — the root cause of doubled
 // `packages.<system>.` attribute segments and "failed to parse nix build
 // output: EOF" (see issue #98, previously mitigated by a mutex).
+// decodeFastBuildResults consumes nix-fast-build --stream-json-lines
+// output and collects each successful BUILD's out path keyed by attribute.
+// Non-BUILD messages and failures are skipped; EOF ends the stream.
+func decodeFastBuildResults(r io.Reader) (map[string]string, error) {
+	dec := json.NewDecoder(bufio.NewReader(r))
+	results := make(map[string]string)
+	for {
+		var msg fastBuildMessage
+		if err := dec.Decode(&msg); err != nil {
+			if errors.Is(err, io.EOF) {
+				return results, nil
+			}
+			return nil, err
+		}
+		if msg.Type != "BUILD" || !msg.Success {
+			continue
+		}
+		out, ok := msg.Outputs["out"]
+		if !ok {
+			continue
+		}
+		results[msg.Attr] = out
+	}
+}
+
 func (n *NixClient) BatchBuildPlatformImages(
 	ctx context.Context,
 	buildContext string,
@@ -402,7 +427,6 @@ func (n *NixClient) BatchBuildPlatformImages(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stdout pipe: %w", err)
 	}
-	dec := json.NewDecoder(bufio.NewReader(stdoutPipe))
 
 	stderrPipe, err := cmd.StderrPipe()
 	if err != nil {
@@ -421,29 +445,15 @@ func (n *NixClient) BatchBuildPlatformImages(
 		return handleNixBuild(sc, &stderrOutput, &stderrMu)
 	})
 
-	results := make(map[string]string, len(attrs))
-	for {
-		var msg fastBuildMessage
-		if err := dec.Decode(&msg); err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			return nil, handleNixBuildError(
-				ctx,
-				buildContext,
-				fmt.Errorf("failed to parse nix-fast-build output: %w", err),
-				&stderrOutput,
-				&stderrMu,
-			)
-		}
-		if msg.Type != "BUILD" || !msg.Success {
-			continue
-		}
-		out, ok := msg.Outputs["out"]
-		if !ok {
-			continue
-		}
-		results[msg.Attr] = out
+	results, err := decodeFastBuildResults(stdoutPipe)
+	if err != nil {
+		return nil, handleNixBuildError(
+			ctx,
+			buildContext,
+			fmt.Errorf("failed to parse nix-fast-build output: %w", err),
+			&stderrOutput,
+			&stderrMu,
+		)
 	}
 
 	if err := wg.Wait(); err != nil {

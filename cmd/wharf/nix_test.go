@@ -466,3 +466,27 @@ func TestBatchBuildPlatformImagesRealNix(t *testing.T) {
 		t.Fatalf("built path does not exist: %v", err)
 	}
 }
+
+func TestDecodeFastBuildResults(t *testing.T) {
+	in := `{"type":"INFO","msg":"eval"}
+{"type":"BUILD","attr":"x86_64-linux.app","success":false,"outputs":{"out":"/nix/store/bad"}}
+{"type":"BUILD","attr":"x86_64-linux.app","success":true,"outputs":{"out":"/nix/store/app"}}
+{"type":"BUILD","attr":"aarch64-linux.app","success":true,"outputs":{}}
+{"type":"BUILD","attr":"aarch64-linux.app","success":true,"outputs":{"out":"/nix/store/app-arm"}}
+`
+	got, err := decodeFastBuildResults(strings.NewReader(in))
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+	want := map[string]string{
+		"x86_64-linux.app":  "/nix/store/app",
+		"aarch64-linux.app": "/nix/store/app-arm",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+
+	if _, err := decodeFastBuildResults(strings.NewReader("{not json")); err == nil {
+		t.Fatalf("expected error for malformed stream")
+	}
+}
