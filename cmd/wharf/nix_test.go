@@ -490,3 +490,40 @@ func TestFastBuildDecoderMessage(t *testing.T) {
 		t.Fatalf("expected error for malformed stream")
 	}
 }
+
+func TestNixClientEvalOutPathFormatsFlakeTarget(t *testing.T) {
+	argsFile := setupNixCommandTest(
+		t,
+		"/nix/store/dp9wk32x0snvba9ymv4dxw10srzldqyj-docker-image-automata.tar.gz\n",
+		"",
+		0,
+	)
+
+	ref, err := name.ParseReference("ghcr.io/example/app:latest")
+	if err != nil {
+		t.Fatalf("parse reference failed: %v", err)
+	}
+	got, err := NewNixClient().EvalOutPath(
+		context.Background(),
+		"/workspace",
+		ref,
+		&v1.Platform{OS: "linux", Architecture: "amd64"},
+	)
+	if err != nil {
+		t.Fatalf("eval out path failed: %v", err)
+	}
+	wantPath := "/nix/store/dp9wk32x0snvba9ymv4dxw10srzldqyj-docker-image-automata.tar.gz"
+	if got != wantPath {
+		t.Fatalf("expected %s, got %s", wantPath, got)
+	}
+
+	assertCapturedCommandArgs(
+		t,
+		argsFile,
+		"nix",
+		"eval",
+		"--raw",
+		"--accept-flake-config",
+		"/workspace#packages.x86_64-linux.app.outPath",
+	)
+}

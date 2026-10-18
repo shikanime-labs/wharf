@@ -129,6 +129,39 @@ func (c *ContainerClient) PushManifest(
 	return nil
 }
 
+// CachedImage fetches an already-published image lazily; it errors when the
+// tag is absent, which callers treat as a cache miss and fail open to a
+// full build.
+func (c *ContainerClient) CachedImage(ref name.Reference) (v1.Image, error) {
+	img, err := remote.Image(ref, c.remote...)
+	if err != nil {
+		return nil, fmt.Errorf("fetch cached image failed: %w", err)
+	}
+	return img, nil
+}
+
+// TagCache re-points tag at the image already published under src. Only the
+// manifest moves — layer blobs dedupe server-side.
+func (c *ContainerClient) TagCache(tag name.Tag, src name.Reference) error {
+	img, err := remote.Image(src, c.remote...)
+	if err != nil {
+		return fmt.Errorf("fetch image for cache tag failed: %w", err)
+	}
+	if err := remote.Tag(tag, img, c.remote...); err != nil {
+		return fmt.Errorf("tag cache image failed: %w", err)
+	}
+	return nil
+}
+
+// PushCachedImage republishes a registry-cached image under ref; manifest
+// write only, no layer transfer.
+func (c *ContainerClient) PushCachedImage(ref name.Reference, img v1.Image) error {
+	if err := remote.Write(ref, img, c.remote...); err != nil {
+		return fmt.Errorf("push cached image failed: %w", err)
+	}
+	return nil
+}
+
 func gzipPathOpener(path string) tarball.Opener {
 	return func() (io.ReadCloser, error) {
 		// streamLayeredImage output is an executable wrapper that writes the

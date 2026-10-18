@@ -27,6 +27,9 @@ var _ nixBuilderClient = &mockNixBuilderClient{}
 //			BuildPlatformImageFunc: func(contextMoqParam context.Context, s string, reference name.Reference, platform *v1.Platform, imageOptionMoqParams ...imageOption) (string, error) {
 //				panic("mock out the BuildPlatformImage method")
 //			},
+//			EvalOutPathFunc: func(contextMoqParam context.Context, s string, reference name.Reference, platform *v1.Platform, imageOptionMoqParams ...imageOption) (string, error) {
+//				panic("mock out the EvalOutPath method")
+//			},
 //		}
 //
 //		// use mockednixBuilderClient in code that requires nixBuilderClient
@@ -39,6 +42,9 @@ type mockNixBuilderClient struct {
 
 	// BuildPlatformImageFunc mocks the BuildPlatformImage method.
 	BuildPlatformImageFunc func(contextMoqParam context.Context, s string, reference name.Reference, platform *v1.Platform, imageOptionMoqParams ...imageOption) (string, error)
+
+	// EvalOutPathFunc mocks the EvalOutPath method.
+	EvalOutPathFunc func(contextMoqParam context.Context, s string, reference name.Reference, platform *v1.Platform, imageOptionMoqParams ...imageOption) (string, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -68,9 +74,23 @@ type mockNixBuilderClient struct {
 			// ImageOptionMoqParams is the imageOptionMoqParams argument value.
 			ImageOptionMoqParams []imageOption
 		}
+		// EvalOutPath holds details about calls to the EvalOutPath method.
+		EvalOutPath []struct {
+			// ContextMoqParam is the contextMoqParam argument value.
+			ContextMoqParam context.Context
+			// S is the s argument value.
+			S string
+			// Reference is the reference argument value.
+			Reference name.Reference
+			// Platform is the platform argument value.
+			Platform *v1.Platform
+			// ImageOptionMoqParams is the imageOptionMoqParams argument value.
+			ImageOptionMoqParams []imageOption
+		}
 	}
 	lockBatchBuildPlatformImages sync.RWMutex
 	lockBuildPlatformImage       sync.RWMutex
+	lockEvalOutPath              sync.RWMutex
 }
 
 // BatchBuildPlatformImages calls BatchBuildPlatformImagesFunc.
@@ -177,6 +197,58 @@ func (mock *mockNixBuilderClient) BuildPlatformImageCalls() []struct {
 	return calls
 }
 
+// EvalOutPath calls EvalOutPathFunc.
+func (mock *mockNixBuilderClient) EvalOutPath(contextMoqParam context.Context, s string, reference name.Reference, platform *v1.Platform, imageOptionMoqParams ...imageOption) (string, error) {
+	callInfo := struct {
+		ContextMoqParam      context.Context
+		S                    string
+		Reference            name.Reference
+		Platform             *v1.Platform
+		ImageOptionMoqParams []imageOption
+	}{
+		ContextMoqParam:      contextMoqParam,
+		S:                    s,
+		Reference:            reference,
+		Platform:             platform,
+		ImageOptionMoqParams: imageOptionMoqParams,
+	}
+	mock.lockEvalOutPath.Lock()
+	mock.calls.EvalOutPath = append(mock.calls.EvalOutPath, callInfo)
+	mock.lockEvalOutPath.Unlock()
+	if mock.EvalOutPathFunc == nil {
+		var (
+			sOut   string
+			errOut error
+		)
+		return sOut, errOut
+	}
+	return mock.EvalOutPathFunc(contextMoqParam, s, reference, platform, imageOptionMoqParams...)
+}
+
+// EvalOutPathCalls gets all the calls that were made to EvalOutPath.
+// Check the length with:
+//
+//	len(mockednixBuilderClient.EvalOutPathCalls())
+func (mock *mockNixBuilderClient) EvalOutPathCalls() []struct {
+	ContextMoqParam      context.Context
+	S                    string
+	Reference            name.Reference
+	Platform             *v1.Platform
+	ImageOptionMoqParams []imageOption
+} {
+	var calls []struct {
+		ContextMoqParam      context.Context
+		S                    string
+		Reference            name.Reference
+		Platform             *v1.Platform
+		ImageOptionMoqParams []imageOption
+	}
+	mock.lockEvalOutPath.RLock()
+	calls = mock.calls.EvalOutPath
+	mock.lockEvalOutPath.RUnlock()
+	return calls
+}
+
 // Ensure, that mockContainerBuilderClient does implement containerBuilderClient.
 // If this is not the case, regenerate this file with moq.
 var _ containerBuilderClient = &mockContainerBuilderClient{}
@@ -187,8 +259,14 @@ var _ containerBuilderClient = &mockContainerBuilderClient{}
 //
 //		// make and configure a mocked containerBuilderClient
 //		mockedcontainerBuilderClient := &mockContainerBuilderClient{
+//			CachedImageFunc: func(reference name.Reference) (v1.Image, error) {
+//				panic("mock out the CachedImage method")
+//			},
 //			CheckPushPermissionFunc: func(reference name.Reference) error {
 //				panic("mock out the CheckPushPermission method")
+//			},
+//			PushCachedImageFunc: func(reference name.Reference, image v1.Image) error {
+//				panic("mock out the PushCachedImage method")
 //			},
 //			PushImageFunc: func(reference name.Reference, s string) error {
 //				panic("mock out the PushImage method")
@@ -199,6 +277,9 @@ var _ containerBuilderClient = &mockContainerBuilderClient{}
 //			PushPlatformImageFunc: func(reference name.Reference, platform *v1.Platform, s string) (mutate.IndexAddendum, error) {
 //				panic("mock out the PushPlatformImage method")
 //			},
+//			TagCacheFunc: func(tag name.Tag, reference name.Reference) error {
+//				panic("mock out the TagCache method")
+//			},
 //		}
 //
 //		// use mockedcontainerBuilderClient in code that requires containerBuilderClient
@@ -206,8 +287,14 @@ var _ containerBuilderClient = &mockContainerBuilderClient{}
 //
 //	}
 type mockContainerBuilderClient struct {
+	// CachedImageFunc mocks the CachedImage method.
+	CachedImageFunc func(reference name.Reference) (v1.Image, error)
+
 	// CheckPushPermissionFunc mocks the CheckPushPermission method.
 	CheckPushPermissionFunc func(reference name.Reference) error
+
+	// PushCachedImageFunc mocks the PushCachedImage method.
+	PushCachedImageFunc func(reference name.Reference, image v1.Image) error
 
 	// PushImageFunc mocks the PushImage method.
 	PushImageFunc func(reference name.Reference, s string) error
@@ -218,12 +305,27 @@ type mockContainerBuilderClient struct {
 	// PushPlatformImageFunc mocks the PushPlatformImage method.
 	PushPlatformImageFunc func(reference name.Reference, platform *v1.Platform, s string) (mutate.IndexAddendum, error)
 
+	// TagCacheFunc mocks the TagCache method.
+	TagCacheFunc func(tag name.Tag, reference name.Reference) error
+
 	// calls tracks calls to the methods.
 	calls struct {
+		// CachedImage holds details about calls to the CachedImage method.
+		CachedImage []struct {
+			// Reference is the reference argument value.
+			Reference name.Reference
+		}
 		// CheckPushPermission holds details about calls to the CheckPushPermission method.
 		CheckPushPermission []struct {
 			// Reference is the reference argument value.
 			Reference name.Reference
+		}
+		// PushCachedImage holds details about calls to the PushCachedImage method.
+		PushCachedImage []struct {
+			// Reference is the reference argument value.
+			Reference name.Reference
+			// Image is the image argument value.
+			Image v1.Image
 		}
 		// PushImage holds details about calls to the PushImage method.
 		PushImage []struct {
@@ -248,11 +350,57 @@ type mockContainerBuilderClient struct {
 			// S is the s argument value.
 			S string
 		}
+		// TagCache holds details about calls to the TagCache method.
+		TagCache []struct {
+			// Tag is the tag argument value.
+			Tag name.Tag
+			// Reference is the reference argument value.
+			Reference name.Reference
+		}
 	}
+	lockCachedImage         sync.RWMutex
 	lockCheckPushPermission sync.RWMutex
+	lockPushCachedImage     sync.RWMutex
 	lockPushImage           sync.RWMutex
 	lockPushManifest        sync.RWMutex
 	lockPushPlatformImage   sync.RWMutex
+	lockTagCache            sync.RWMutex
+}
+
+// CachedImage calls CachedImageFunc.
+func (mock *mockContainerBuilderClient) CachedImage(reference name.Reference) (v1.Image, error) {
+	callInfo := struct {
+		Reference name.Reference
+	}{
+		Reference: reference,
+	}
+	mock.lockCachedImage.Lock()
+	mock.calls.CachedImage = append(mock.calls.CachedImage, callInfo)
+	mock.lockCachedImage.Unlock()
+	if mock.CachedImageFunc == nil {
+		var (
+			imageOut v1.Image
+			errOut   error
+		)
+		return imageOut, errOut
+	}
+	return mock.CachedImageFunc(reference)
+}
+
+// CachedImageCalls gets all the calls that were made to CachedImage.
+// Check the length with:
+//
+//	len(mockedcontainerBuilderClient.CachedImageCalls())
+func (mock *mockContainerBuilderClient) CachedImageCalls() []struct {
+	Reference name.Reference
+} {
+	var calls []struct {
+		Reference name.Reference
+	}
+	mock.lockCachedImage.RLock()
+	calls = mock.calls.CachedImage
+	mock.lockCachedImage.RUnlock()
+	return calls
 }
 
 // CheckPushPermission calls CheckPushPermissionFunc.
@@ -287,6 +435,45 @@ func (mock *mockContainerBuilderClient) CheckPushPermissionCalls() []struct {
 	mock.lockCheckPushPermission.RLock()
 	calls = mock.calls.CheckPushPermission
 	mock.lockCheckPushPermission.RUnlock()
+	return calls
+}
+
+// PushCachedImage calls PushCachedImageFunc.
+func (mock *mockContainerBuilderClient) PushCachedImage(reference name.Reference, image v1.Image) error {
+	callInfo := struct {
+		Reference name.Reference
+		Image     v1.Image
+	}{
+		Reference: reference,
+		Image:     image,
+	}
+	mock.lockPushCachedImage.Lock()
+	mock.calls.PushCachedImage = append(mock.calls.PushCachedImage, callInfo)
+	mock.lockPushCachedImage.Unlock()
+	if mock.PushCachedImageFunc == nil {
+		var (
+			errOut error
+		)
+		return errOut
+	}
+	return mock.PushCachedImageFunc(reference, image)
+}
+
+// PushCachedImageCalls gets all the calls that were made to PushCachedImage.
+// Check the length with:
+//
+//	len(mockedcontainerBuilderClient.PushCachedImageCalls())
+func (mock *mockContainerBuilderClient) PushCachedImageCalls() []struct {
+	Reference name.Reference
+	Image     v1.Image
+} {
+	var calls []struct {
+		Reference name.Reference
+		Image     v1.Image
+	}
+	mock.lockPushCachedImage.RLock()
+	calls = mock.calls.PushCachedImage
+	mock.lockPushCachedImage.RUnlock()
 	return calls
 }
 
@@ -409,5 +596,44 @@ func (mock *mockContainerBuilderClient) PushPlatformImageCalls() []struct {
 	mock.lockPushPlatformImage.RLock()
 	calls = mock.calls.PushPlatformImage
 	mock.lockPushPlatformImage.RUnlock()
+	return calls
+}
+
+// TagCache calls TagCacheFunc.
+func (mock *mockContainerBuilderClient) TagCache(tag name.Tag, reference name.Reference) error {
+	callInfo := struct {
+		Tag       name.Tag
+		Reference name.Reference
+	}{
+		Tag:       tag,
+		Reference: reference,
+	}
+	mock.lockTagCache.Lock()
+	mock.calls.TagCache = append(mock.calls.TagCache, callInfo)
+	mock.lockTagCache.Unlock()
+	if mock.TagCacheFunc == nil {
+		var (
+			errOut error
+		)
+		return errOut
+	}
+	return mock.TagCacheFunc(tag, reference)
+}
+
+// TagCacheCalls gets all the calls that were made to TagCache.
+// Check the length with:
+//
+//	len(mockedcontainerBuilderClient.TagCacheCalls())
+func (mock *mockContainerBuilderClient) TagCacheCalls() []struct {
+	Tag       name.Tag
+	Reference name.Reference
+} {
+	var calls []struct {
+		Tag       name.Tag
+		Reference name.Reference
+	}
+	mock.lockTagCache.RLock()
+	calls = mock.calls.TagCache
+	mock.lockTagCache.RUnlock()
 	return calls
 }

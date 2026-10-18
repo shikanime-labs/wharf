@@ -24,6 +24,14 @@ func mustParseReference(t *testing.T) name.Reference {
 	return ref
 }
 
+func evalOutPathFunc(context.Context, string, name.Reference, *v1.Platform, ...imageOption) (string, error) {
+	return "/nix/store/01234567890123456789012345678901-docker-image-app.tar.gz", nil
+}
+
+func cacheMissFunc(name.Reference) (v1.Image, error) {
+	return nil, errors.New("cache miss")
+}
+
 func TestBuilderBuildAndPushReturnsPermissionErrorBeforeBuild(t *testing.T) {
 	ref := mustParseReference(t)
 	plat := &v1.Platform{OS: "linux", Architecture: "amd64"}
@@ -57,12 +65,17 @@ func TestBuilderBuildAndPushSinglePlatformStreamFlow(t *testing.T) {
 	ref := mustParseReference(t)
 	plat := &v1.Platform{OS: "linux", Architecture: "amd64"}
 	nixClient := &mockNixBuilderClient{
+		EvalOutPathFunc: evalOutPathFunc,
 		BuildPlatformImageFunc: func(context.Context, string, name.Reference, *v1.Platform, ...imageOption) (string, error) {
 			return "/tmp/result", nil
 		},
 	}
 	containerClient := &mockContainerBuilderClient{
+		CachedImageFunc: cacheMissFunc,
 		PushImageFunc: func(name.Reference, string) error {
+			return nil
+		},
+		TagCacheFunc: func(name.Tag, name.Reference) error {
 			return nil
 		},
 	}
@@ -138,6 +151,7 @@ func TestBuilderBuildAndPushMultiplatformTracksImage(t *testing.T) {
 		{OS: "linux", Architecture: "arm64"},
 	}
 	nixClient := &mockNixBuilderClient{
+		EvalOutPathFunc: evalOutPathFunc,
 		BatchBuildPlatformImagesFunc: func(_ context.Context, _ string, _ name.Reference, platforms []*v1.Platform, _ ...imageOption) ([]string, error) {
 			paths := make([]string, len(platforms))
 			for i := range platforms {
@@ -147,8 +161,12 @@ func TestBuilderBuildAndPushMultiplatformTracksImage(t *testing.T) {
 		},
 	}
 	containerClient := &mockContainerBuilderClient{
+		CachedImageFunc: cacheMissFunc,
 		PushPlatformImageFunc: func(name.Reference, *v1.Platform, string) (mutate.IndexAddendum, error) {
 			return mutate.IndexAddendum{}, nil
+		},
+		TagCacheFunc: func(name.Tag, name.Reference) error {
+			return nil
 		},
 	}
 
@@ -182,11 +200,14 @@ func TestBuilderBuildAndPushMultiplatformFailsWhenBatchBuildFails(t *testing.T) 
 		{OS: "linux", Architecture: "arm64"},
 	}
 	nixClient := &mockNixBuilderClient{
+		EvalOutPathFunc: evalOutPathFunc,
 		BatchBuildPlatformImagesFunc: func(context.Context, string, name.Reference, []*v1.Platform, ...imageOption) ([]string, error) {
 			return nil, errors.New("nix-fast-build failed")
 		},
 	}
-	containerClient := &mockContainerBuilderClient{}
+	containerClient := &mockContainerBuilderClient{
+		CachedImageFunc: cacheMissFunc,
+	}
 
 	builder := NewBuilder(nixClient, containerClient, WithPush(true))
 	err := builder.BuildAndPush(context.Background(), "/workspace", ref, plats)
@@ -198,5 +219,123 @@ func TestBuilderBuildAndPushMultiplatformFailsWhenBatchBuildFails(t *testing.T) 
 			"expected no pushes after failed build, got %d",
 			len(containerClient.PushPlatformImageCalls()),
 		)
+	}
+}
+
+func TestBuilderMultiplatformSkipsNixOnFullCacheHit(t *testing.T) {
+	ref := mustParseReference(t)
+	plats := []*v1.Platform{
+		{OS: "linux", Architecture: "amd64"},
+		{OS: "linux", Architecture: "arm64"},
+	}
+	nixClient := &mockNixBuilderClient{
+		EvalOutPathFunc: func(_ context.Context, _ string, _ name.Reference, p *v1.Platform, _ ...imageOption) (string, error) {
+			hash := "11111111111111111111111111111111"
+			if p.Architecture == "arm64" {
+				hash = "22222222222222222222222222222222"
+			}
+			return fmt.Sprintf("/nix/store/%s-docker-image-app.tar.gz", hash), nil
+		},
+	}
+	containerClient := &mockContainerBuilderClient{
+		CachedImageFunc: func(name.Reference) (v1.Image, error) {
+			return nil, nil
+		},
+	}
+
+	builder := NewBuilder(nixClient, containerClient, WithPush(true))
+	if err := builder.BuildAndPush(context.Background(), "/workspace", ref, plats); err != nil {
+		t.Fatalf("cached multiplatform build failed: %v", err)
+	}
+
+	if calls := nixClient.BatchBuildPlatformImagesCalls(); len(calls) != 0 {
+		t.Fatalf("expected nix build to be skipped on full cache hit, got %d calls", len(calls))
+	}
+	if calls := containerClient.PushPlatformImageCalls(); len(calls) != 0 {
+		t.Fatalf("expected no platform pushes on full cache hit, got %d", len(calls))
+	}
+	if calls := containerClient.PushManifestCalls(); len(calls) != 1 {
+		t.Fatalf("expected one manifest push from cache, got %d", len(calls))
+	}
+}
+
+func TestBuilderMultiplatformBuildsOnlyCacheMissesAndRecordsTags(t *testing.T) {
+	ref := mustParseReference(t)
+	plats := []*v1.Platform{
+		{OS: "linux", Architecture: "amd64"},
+		{OS: "linux", Architecture: "arm64"},
+	}
+	nixClient := &mockNixBuilderClient{
+		EvalOutPathFunc: func(_ context.Context, _ string, _ name.Reference, p *v1.Platform, _ ...imageOption) (string, error) {
+			hash := "11111111111111111111111111111111"
+			if p.Architecture == "arm64" {
+				hash = "22222222222222222222222222222222"
+			}
+			return fmt.Sprintf("/nix/store/%s-docker-image-app.tar.gz", hash), nil
+		},
+		BatchBuildPlatformImagesFunc: func(_ context.Context, _ string, _ name.Reference, platforms []*v1.Platform, _ ...imageOption) ([]string, error) {
+			paths := make([]string, len(platforms))
+			for i := range platforms {
+				paths[i] = "/nix/store/built-arm64-docker-image-app.tar.gz"
+			}
+			return paths, nil
+		},
+	}
+	containerClient := &mockContainerBuilderClient{
+		CachedImageFunc: func(ref name.Reference) (v1.Image, error) {
+			if strings.Contains(ref.Name(), "nix-11111111111111111111111111111111") {
+				return nil, nil
+			}
+			return nil, errors.New("cache miss")
+		},
+		PushPlatformImageFunc: func(name.Reference, *v1.Platform, string) (mutate.IndexAddendum, error) {
+			return mutate.IndexAddendum{}, nil
+		},
+		TagCacheFunc: func(name.Tag, name.Reference) error {
+			return nil
+		},
+	}
+
+	builder := NewBuilder(nixClient, containerClient, WithPush(true))
+	if err := builder.BuildAndPush(context.Background(), "/workspace", ref, plats); err != nil {
+		t.Fatalf("partial-miss multiplatform build failed: %v", err)
+	}
+
+	batchCalls := nixClient.BatchBuildPlatformImagesCalls()
+	if len(batchCalls) != 1 || len(batchCalls[0].Platforms) != 1 {
+		t.Fatalf("expected batch build of exactly one missed platform, got %d calls", len(batchCalls))
+	}
+	if batchCalls[0].Platforms[0].Architecture != "arm64" {
+		t.Fatalf("expected arm64 to be the missed platform, got %s", batchCalls[0].Platforms[0].Architecture)
+	}
+	if calls := containerClient.PushPlatformImageCalls(); len(calls) != 1 {
+		t.Fatalf("expected one platform push for the missed platform, got %d", len(calls))
+	}
+	tagCalls := containerClient.TagCacheCalls()
+	if len(tagCalls) != 1 {
+		t.Fatalf("expected one cache tag recorded, got %d", len(tagCalls))
+	}
+	if !strings.Contains(tagCalls[0].Tag.Name(), "nix-22222222222222222222222222222222") {
+		t.Fatalf("expected cache tag for the missed platform, got %s", tagCalls[0].Tag.Name())
+	}
+	if calls := containerClient.PushManifestCalls(); len(calls) != 1 {
+		t.Fatalf("expected one manifest push, got %d", len(calls))
+	}
+}
+
+func TestCacheTagName(t *testing.T) {
+	tag, err := cacheTagName(
+		mustParseReference(t).Context(),
+		"/nix/store/dp9wk32x0snvba9ymv4dxw10srzldqyj-docker-image-automata.tar.gz",
+	)
+	if err != nil {
+		t.Fatalf("cacheTagName failed: %v", err)
+	}
+	want := "ghcr.io/example/app:nix-dp9wk32x0snvba9ymv4dxw10srzldqyj"
+	if tag.Name() != want {
+		t.Fatalf("cache tag = %q, want %q", tag.Name(), want)
+	}
+	if _, err := cacheTagName(mustParseReference(t).Context(), "not-a-store-path"); err == nil {
+		t.Fatalf("expected error for path without store hash")
 	}
 }

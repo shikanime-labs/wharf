@@ -35,6 +35,13 @@ type nixBuilderClient interface {
 		[]*v1.Platform,
 		...imageOption,
 	) ([]string, error)
+	EvalOutPath(
+		context.Context,
+		string,
+		name.Reference,
+		*v1.Platform,
+		...imageOption,
+	) (string, error)
 }
 
 type containerBuilderClient interface {
@@ -42,6 +49,9 @@ type containerBuilderClient interface {
 	PushImage(name.Reference, string) error
 	PushPlatformImage(name.Reference, *v1.Platform, string) (mutate.IndexAddendum, error)
 	PushManifest(name.Reference, []mutate.IndexAddendum) error
+	CachedImage(name.Reference) (v1.Image, error)
+	TagCache(name.Tag, name.Reference) error
+	PushCachedImage(name.Reference, v1.Image) error
 }
 
 type Builder struct {
@@ -153,61 +163,153 @@ func (b *Builder) buildAndPushMultiplatformImage(
 			"multiplatform image build is only supported when pushing to remote registry",
 		)
 	}
+
+	// Registry short-circuit: evaluate each platform's out path (cheap,
+	// no build) and look for a nix-<hash> cache tag. Every platform hit
+	// means the multi-arch manifest already exists — skip nix entirely.
+	type cacheEntry struct {
+		tag  name.Tag
+		img  v1.Image
+		hit  bool
+		path string
+	}
+	entries := make([]*cacheEntry, 0, len(ps))
+	allHit := true
+	for _, p := range ps {
+		entry := &cacheEntry{}
+		outPath, err := b.nix.EvalOutPath(ctx, buildContext, ref, p, b.imageOpts...)
+		if err != nil {
+			return fmt.Errorf("eval out path failed: %w", err)
+		}
+		entry.path = outPath
+		entry.tag, err = cacheTagName(ref.Context(), outPath)
+		if err != nil {
+			return fmt.Errorf("cache tag failed: %w", err)
+		}
+		if img, err := b.container.CachedImage(entry.tag); err == nil {
+			entry.img = img
+			entry.hit = true
+			slog.InfoContext(
+				ctx,
+				"registry cache hit",
+				"ref", ref.Name(),
+				"platform", formatSystemName(p),
+				"cache_tag", entry.tag.Name(),
+			)
+		} else {
+			allHit = false
+			slog.InfoContext(
+				ctx,
+				"registry cache miss",
+				"ref", ref.Name(),
+				"platform", formatSystemName(p),
+				"cache_tag", entry.tag.Name(),
+			)
+		}
+		entries = append(entries, entry)
+	}
+	if allHit {
+		adds := make([]mutate.IndexAddendum, 0, len(entries))
+		for i, entry := range entries {
+			adds = append(adds, mutate.IndexAddendum{
+				Add:        entry.img,
+				Descriptor: v1.Descriptor{Platform: ps[i]},
+			})
+		}
+		slog.InfoContext(ctx, "push manifest from cache", "ref", ref.Name(), "platform_count", len(adds))
+		if err := b.container.PushManifest(ref, adds); err != nil {
+			return err
+		}
+		slog.InfoContext(ctx, "manifest pushed from cache", "ref", ref.Name(), "platform_count", len(adds))
+		return nil
+	}
+
 	var adds []mutate.IndexAddendum
 	var addsMu sync.Mutex
 	slog.InfoContext(ctx, "build multiplatform image", "ref", ref.Name(), "platform_count", len(ps))
 
-	// One batched nix-fast-build invocation builds every platform: a
-	// single evaluation feeds parallel builds internally, so per-platform
-	// nix processes can no longer race the shared eval-cache (issue #98).
+	// One batched nix-fast-build invocation builds only the platforms
+	// that missed the registry cache: a single evaluation feeds parallel
+	// builds internally, so per-platform nix processes can no longer race
+	// the shared eval-cache (issue #98).
+	missedIdx := make([]int, 0, len(ps))
+	missed := make([]*v1.Platform, 0, len(ps))
+	for i, entry := range entries {
+		if !entry.hit {
+			missedIdx = append(missedIdx, i)
+			missed = append(missed, ps[i])
+		}
+	}
 	bctx, bspan := startSpan(ctx, "nix.build.batch",
 		attribute.String("ref", ref.Name()),
-		attribute.Int("platform_count", len(ps)),
+		attribute.Int("platform_count", len(missed)),
 	)
-	paths, err := b.nix.BatchBuildPlatformImages(bctx, buildContext, ref, ps, b.imageOpts...)
+	missedPaths, err := b.nix.BatchBuildPlatformImages(bctx, buildContext, ref, missed, b.imageOpts...)
 	bspan.End()
 	if err != nil {
 		return fmt.Errorf("build images failed: %w", err)
 	}
+	if len(missedPaths) != len(missed) {
+		return fmt.Errorf(
+			"build produced %d paths for %d platforms",
+			len(missedPaths), len(missed),
+		)
+	}
+	for j, i := range missedIdx {
+		entries[i].path = missedPaths[j]
+	}
 
 	wg, ctx := errgroup.WithContext(ctx)
 	for i, p := range ps {
-		p, path := p, paths[i]
+		p, entry := p, entries[i]
 		wg.Go(func() error {
 			_, pspan := startSpan(ctx, "nix.build.platform",
 				attribute.String("ref", ref.Name()),
 				attribute.String("platform", formatSystemName(p)),
 			)
 			defer pspan.End()
-			slog.InfoContext(
-				ctx,
-				"platform image built",
-				"ref", ref.Name(),
-				"platform", formatSystemName(p),
-				"path", path,
-			)
 			platformTag, err := formatPlatformReference(ref, p)
 			if err != nil {
 				return fmt.Errorf("format platform reference failed: %w", err)
 			}
-			slog.InfoContext(
-				ctx,
-				"push platform image",
-				"ref", ref.Name(),
-				"platform", formatSystemName(p),
-				"platform_ref", platformTag.Name(),
-			)
-			add, err := b.container.PushPlatformImage(platformTag, p, path)
+			var add mutate.IndexAddendum
+			if entry.hit {
+				// Repoint the platform tag at the cached digest — manifest
+				// write only. The index still needs the addendum below.
+				slog.InfoContext(
+					ctx,
+					"platform image from cache",
+					"ref", ref.Name(),
+					"platform", formatSystemName(p),
+					"cache_tag", entry.tag.Name(),
+				)
+				if err := b.container.PushCachedImage(platformTag, entry.img); err != nil {
+					return err
+				}
+				add = mutate.IndexAddendum{
+					Add:        entry.img,
+					Descriptor: v1.Descriptor{Platform: p},
+				}
+			} else {
+				slog.InfoContext(
+					ctx,
+					"push platform image",
+					"ref", ref.Name(),
+					"platform", formatSystemName(p),
+					"path", entry.path,
+				)
+				add, err = b.container.PushPlatformImage(platformTag, p, entry.path)
+			}
 			if err != nil {
 				return err
 			}
-			slog.InfoContext(
-				ctx,
-				"platform image pushed",
-				"ref", ref.Name(),
-				"platform", formatSystemName(p),
-				"platform_ref", platformTag.Name(),
-			)
+			if !entry.hit {
+				// Record the build under its immutable cache tag so the
+				// next run can skip nix entirely.
+				if err := b.container.TagCache(entry.tag, platformTag); err != nil {
+					return err
+				}
+			}
 			addsMu.Lock()
 			adds = append(adds, add)
 			addsMu.Unlock()
@@ -237,15 +339,46 @@ func (b *Builder) buildAndPushImage(
 	ref name.Reference,
 	p *v1.Platform,
 ) error {
-	path, err := b.buildPlatformPath(ctx, buildContext, ref, p)
-	if err != nil {
-		return fmt.Errorf("build flake image failed: %w", err)
-	}
 	if b.push {
+		// Registry short-circuit: same closure hash means same image.
+		outPath, err := b.nix.EvalOutPath(ctx, buildContext, ref, p, b.imageOpts...)
+		if err != nil {
+			return fmt.Errorf("eval out path failed: %w", err)
+		}
+		cacheTag, err := cacheTagName(ref.Context(), outPath)
+		if err != nil {
+			return fmt.Errorf("cache tag failed: %w", err)
+		}
+		if img, err := b.container.CachedImage(cacheTag); err == nil {
+			slog.InfoContext(
+				ctx,
+				"registry cache hit",
+				"ref", ref.Name(),
+				"cache_tag", cacheTag.Name(),
+			)
+			return b.container.PushCachedImage(ref, img)
+		}
+		slog.InfoContext(
+			ctx,
+			"registry cache miss",
+			"ref", ref.Name(),
+			"cache_tag", cacheTag.Name(),
+		)
+		path, err := b.buildPlatformPath(ctx, buildContext, ref, p)
+		if err != nil {
+			return fmt.Errorf("build flake image failed: %w", err)
+		}
 		slog.DebugContext(ctx, "push image", "ref", ref.Name())
 		if err := b.container.PushImage(ref, path); err != nil {
 			return err
 		}
+		// Record the build under its immutable cache tag so the next run
+		// can skip nix entirely.
+		return b.container.TagCache(cacheTag, ref)
+	}
+	_, err := b.buildPlatformPath(ctx, buildContext, ref, p)
+	if err != nil {
+		return fmt.Errorf("build flake image failed: %w", err)
 	}
 	return nil
 }

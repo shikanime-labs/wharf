@@ -226,6 +226,40 @@ func (n *NixClient) BuildPlatformImage(
 	return n.BuildImage(ctx, formatNixFlakePackage(buildContext, ref, p), opts...)
 }
 
+// EvalOutPath evaluates the flake package's out store path without
+// building it. The path's hash identifies the full closure, so it doubles
+// as the content identity behind the registry cache tag.
+func (n *NixClient) EvalOutPath(
+	ctx context.Context,
+	buildContext string,
+	ref name.Reference,
+	p *v1.Platform,
+	opts ...imageOption,
+) (string, error) {
+	o := makeImageOptions(opts...)
+
+	url := formatNixFlakePackage(buildContext, ref, p)
+	args := []string{"eval", "--raw"}
+	if o.acceptFlakeConfig {
+		args = append(args, "--accept-flake-config")
+	}
+	args = append(args, url+".outPath")
+	cmd := nixCommandContext(ctx, "nix", args...)
+	slog.DebugContext(ctx, "eval out path", "url", url, "args", args)
+
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return "", formatNixBuildError(fmt.Errorf("failed to run nix eval: %w", err), stderr.String())
+	}
+	path := strings.TrimSpace(string(out))
+	if path == "" {
+		return "", fmt.Errorf("nix eval returned empty out path for %s", url)
+	}
+	return path, nil
+}
+
 func (n *NixClient) BuildImage(
 	ctx context.Context,
 	url string,
