@@ -523,7 +523,6 @@ func TestNixClientEvalOutPathFormatsFlakeTarget(t *testing.T) {
 		"nix",
 		"eval",
 		"--raw",
-		"--accept-flake-config",
 		"/workspace#packages.x86_64-linux.app.outPath",
 	)
 }

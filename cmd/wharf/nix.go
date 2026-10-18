@@ -240,8 +240,8 @@ func (n *NixClient) EvalOutPath(
 
 	url := formatNixFlakePackage(buildContext, ref, p)
 	args := []string{"eval", "--raw"}
-	if o.acceptFlakeConfig {
-		args = append(args, "--accept-flake-config")
+	for i := 0; i+1 < len(o.options); i += 2 {
+		args = append(args, "--option", o.options[i], o.options[i+1])
 	}
 	args = append(args, url+".outPath")
 	cmd := nixCommandContext(ctx, "nix", args...)
@@ -412,7 +412,7 @@ func (n *NixClient) BatchBuildPlatformImages(
 	buildContext string,
 	ref name.Reference,
 	plats []*v1.Platform,
-	_ ...imageOption,
+	opts ...imageOption,
 ) ([]string, error) {
 	if len(plats) == 0 {
 		return nil, fmt.Errorf("at least one platform is required")
