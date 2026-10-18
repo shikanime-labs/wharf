@@ -326,6 +326,26 @@ type fastBuildMessage struct {
 	Outputs map[string]string `json:"outputs"`
 }
 
+// formatSelectExpr builds the nix-fast-build --select function, a nested
+// attrset rebuilt from real attrpath segments: nix-eval-jobs requires an
+// attrset traversal root, and `builtins.getAttr "system.name"` (or
+// `attrs ? system.name`) performs a single-component lookup that never
+// matches nested keys — such a select silently filters out every job.
+// Quoted segments keep any package name valid; duplicate systems are
+// collapsed (distinct platforms already cover the legal set).
+func formatSelectExpr(systems []string, pkgName string) string {
+	seen := make(map[string]bool, len(systems))
+	parts := make([]string, 0, len(systems))
+	for _, system := range systems {
+		if seen[system] {
+			continue
+		}
+		seen[system] = true
+		parts = append(parts, fmt.Sprintf(`  %q.%q = attrs.%q.%q;`, system, pkgName, system, pkgName))
+	}
+	return "attrs: {\n" + strings.Join(parts, "\n") + "\n}"
+}
+
 // BatchBuildPlatformImages builds the flake package for every platform in a
 // single nix-fast-build invocation and returns the store paths in platform
 // order. Evaluation is shared (one nix-eval-jobs process) and builds fan
@@ -353,26 +373,7 @@ func (n *NixClient) BatchBuildPlatformImages(
 		systems = append(systems, system)
 	}
 
-	// The select must rebuild a NESTED attrset from real attrpath
-	// segments: nix-eval-jobs requires an attrset traversal root, and
-	// `builtins.getAttr "system.name"` (or `attrs ? system.name`) performs
-	// a single-component lookup that never matches nested keys — such a
-	// select silently filters out every job. Quoted segments keep any
-	// package name valid; duplicates would error at eval (already covered
-	// by distinct platforms).
-	seen := make(map[string]bool, len(attrs))
-	selectParts := make([]string, 0, len(attrs))
-	for i, attr := range attrs {
-		if seen[attr] {
-			continue
-		}
-		seen[attr] = true
-		selectParts = append(selectParts, fmt.Sprintf(
-			`  %q.%q = attrs.%q.%q;`,
-			systems[i], pkgName, systems[i], pkgName,
-		))
-	}
-	selectExpr := "attrs: {\n" + strings.Join(selectParts, "\n") + "\n}"
+	selectExpr := formatSelectExpr(systems, pkgName)
 
 	o := makeImageOptions(opts...)
 	args := []string{
