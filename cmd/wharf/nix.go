@@ -353,15 +353,25 @@ func formatSelectExpr(systems []string, pkgName string) string {
 // the shared eval-cache SQLite database — the root cause of doubled
 // `packages.<system>.` attribute segments and "failed to parse nix build
 // output: EOF" (see issue #98, previously mitigated by a mutex).
-// decodeFastBuildResults consumes nix-fast-build --stream-json-lines
-// output and collects each successful BUILD's out path keyed by attribute.
-// Non-BUILD messages and failures are skipped; EOF ends the stream.
-func decodeFastBuildResults(r io.Reader) (map[string]string, error) {
-	dec := json.NewDecoder(bufio.NewReader(r))
+// fastBuildDecoder abstracts the nix-fast-build --stream-json-lines
+// wire format: a sequence of JSON messages of which only successful
+// BUILD results carry output paths.
+type fastBuildDecoder struct {
+	dec *json.Decoder
+}
+
+func newFastBuildDecoder(r io.Reader) *fastBuildDecoder {
+	return &fastBuildDecoder{dec: json.NewDecoder(bufio.NewReader(r))}
+}
+
+// results drains the stream and collects each successful BUILD's out
+// path keyed by attribute. Non-BUILD messages and failures are skipped;
+// EOF ends the stream.
+func (d *fastBuildDecoder) results() (map[string]string, error) {
 	results := make(map[string]string)
 	for {
 		var msg fastBuildMessage
-		if err := dec.Decode(&msg); err != nil {
+		if err := d.dec.Decode(&msg); err != nil {
 			if errors.Is(err, io.EOF) {
 				return results, nil
 			}
@@ -445,7 +455,7 @@ func (n *NixClient) BatchBuildPlatformImages(
 		return handleNixBuild(sc, &stderrOutput, &stderrMu)
 	})
 
-	results, err := decodeFastBuildResults(stdoutPipe)
+	results, err := newFastBuildDecoder(stdoutPipe).results()
 	if err != nil {
 		return nil, handleNixBuildError(
 			ctx,

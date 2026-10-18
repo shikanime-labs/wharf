@@ -474,7 +474,7 @@ func TestDecodeFastBuildResults(t *testing.T) {
 {"type":"BUILD","attr":"aarch64-linux.app","success":true,"outputs":{}}
 {"type":"BUILD","attr":"aarch64-linux.app","success":true,"outputs":{"out":"/nix/store/app-arm"}}
 `
-	got, err := decodeFastBuildResults(strings.NewReader(in))
+	got, err := newFastBuildDecoder(strings.NewReader(in)).results()
 	if err != nil {
 		t.Fatalf("decode failed: %v", err)
 	}
@@ -486,7 +486,7 @@ func TestDecodeFastBuildResults(t *testing.T) {
 		t.Fatalf("expected %q, got %q", want, got)
 	}
 
-	if _, err := decodeFastBuildResults(strings.NewReader("{not json")); err == nil {
+	if _, err := newFastBuildDecoder(strings.NewReader("{not json")).results(); err == nil {
 		t.Fatalf("expected error for malformed stream")
 	}
 }
