@@ -238,7 +238,7 @@ func TestBuilderMultiplatformSkipsNixOnFullCacheHit(t *testing.T) {
 		},
 	}
 	containerClient := &mockContainerBuilderClient{
-		CachedImageFunc: func(_ name.Reference, wantOutPath string) (v1.Image, error) {
+		CachedImageFunc: func(name.Reference, string) (v1.Image, error) {
 			return nil, nil // annotation match by contract; mock returns the image
 		},
 	}
@@ -282,7 +282,7 @@ func TestBuilderMultiplatformBuildsOnlyCacheMissesAndRecordsTags(t *testing.T) {
 		},
 	}
 	containerClient := &mockContainerBuilderClient{
-		CachedImageFunc: func(_ name.Reference, wantOutPath string) (v1.Image, error) {
+		CachedImageFunc: func(name.Reference, string) (v1.Image, error) {
 			if strings.Contains(wantOutPath, "11111111111111111111111111111111") {
 				return nil, nil
 			}
