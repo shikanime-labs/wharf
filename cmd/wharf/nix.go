@@ -412,7 +412,7 @@ func (n *NixClient) BatchBuildPlatformImages(
 	buildContext string,
 	ref name.Reference,
 	plats []*v1.Platform,
-	opts ...imageOption,
+	_ ...imageOption,
 ) ([]string, error) {
 	if len(plats) == 0 {
 		return nil, fmt.Errorf("at least one platform is required")
