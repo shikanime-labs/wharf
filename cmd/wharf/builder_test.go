@@ -28,7 +28,7 @@ func evalOutPathFunc(context.Context, string, name.Reference, *v1.Platform, ...i
 	return "/nix/store/01234567890123456789012345678901-docker-image-app.tar.gz", nil
 }
 
-func cacheMissFunc(name.Reference, string) (v1.Image, error) {
+func cacheMissFunc(name.Reference) (v1.Image, error) {
 	return nil, errors.New("cache miss")
 }
 
@@ -75,7 +75,7 @@ func TestBuilderBuildAndPushSinglePlatformStreamFlow(t *testing.T) {
 		PushImageFunc: func(name.Reference, string) error {
 			return nil
 		},
-		AnnotateImageFunc: func(name.Reference, string) error {
+		TagImageFunc: func(name.Tag, name.Reference) error {
 			return nil
 		},
 	}
@@ -165,7 +165,7 @@ func TestBuilderBuildAndPushMultiplatformTracksImage(t *testing.T) {
 		PushPlatformImageFunc: func(name.Reference, *v1.Platform, string) (mutate.IndexAddendum, error) {
 			return mutate.IndexAddendum{}, nil
 		},
-		AnnotateImageFunc: func(name.Reference, string) error {
+		TagImageFunc: func(name.Tag, name.Reference) error {
 			return nil
 		},
 	}
@@ -238,8 +238,8 @@ func TestBuilderMultiplatformSkipsNixOnFullCacheHit(t *testing.T) {
 		},
 	}
 	containerClient := &mockContainerBuilderClient{
-		CachedImageFunc: func(name.Reference, string) (v1.Image, error) {
-			return nil, nil // annotation match by contract; mock returns the image
+		CachedImageFunc: func(name.Reference) (v1.Image, error) {
+			return nil, nil // tag exists = hit; mock returns the lazy image
 		},
 	}
 
@@ -282,8 +282,8 @@ func TestBuilderMultiplatformBuildsOnlyCacheMissesAndRecordsTags(t *testing.T) {
 		},
 	}
 	containerClient := &mockContainerBuilderClient{
-		CachedImageFunc: func(_ name.Reference, wantOutPath string) (v1.Image, error) {
-			if strings.Contains(wantOutPath, "11111111111111111111111111111111") {
+		CachedImageFunc: func(ref name.Reference) (v1.Image, error) {
+			if strings.Contains(ref.Name(), "nix-11111111111111111111111111111111") {
 				return nil, nil
 			}
 			return nil, errors.New("cache miss")
@@ -291,7 +291,7 @@ func TestBuilderMultiplatformBuildsOnlyCacheMissesAndRecordsTags(t *testing.T) {
 		PushPlatformImageFunc: func(name.Reference, *v1.Platform, string) (mutate.IndexAddendum, error) {
 			return mutate.IndexAddendum{}, nil
 		},
-		AnnotateImageFunc: func(name.Reference, string) error {
+		TagImageFunc: func(name.Tag, name.Reference) error {
 			return nil
 		},
 	}
@@ -311,12 +311,12 @@ func TestBuilderMultiplatformBuildsOnlyCacheMissesAndRecordsTags(t *testing.T) {
 	if calls := containerClient.PushPlatformImageCalls(); len(calls) != 1 {
 		t.Fatalf("expected one platform push for the missed platform, got %d", len(calls))
 	}
-	annCalls := containerClient.AnnotateImageCalls()
-	if len(annCalls) != 1 {
-		t.Fatalf("expected one annotation recorded, got %d", len(annCalls))
+	tagCalls := containerClient.TagImageCalls()
+	if len(tagCalls) != 1 {
+		t.Fatalf("expected one cache tag recorded, got %d", len(tagCalls))
 	}
-	if !strings.Contains(annCalls[0].S, "built-arm64") {
-		t.Fatalf("expected annotation for the missed platform's built path, got %s", annCalls[0].S)
+	if !strings.Contains(tagCalls[0].Tag.Name(), "nix-22222222222222222222222222222222") {
+		t.Fatalf("expected cache tag for the missed platform, got %s", tagCalls[0].Tag.Name())
 	}
 	if calls := containerClient.PushManifestCalls(); len(calls) != 1 {
 		t.Fatalf("expected one manifest push, got %d", len(calls))

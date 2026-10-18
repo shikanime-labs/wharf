@@ -67,6 +67,22 @@ func formatNixFlakePackagesRoot(buildContext string) string {
 	return url + "#packages"
 }
 
+// cacheTagName derives the registry cache tag for a nix store path: the
+// 32-char store hash is a content identity over the whole closure (lock,
+// sources, baked secrets), so the tag only ever names one image.
+// ponytail: hash tags accumulate as immutable orphans; add a sweeper if
+// ghcr tag clutter ever matters.
+func cacheTagName(repo name.Repository, path string) (name.Tag, error) {
+	base := path
+	if i := strings.LastIndexByte(path, '/'); i >= 0 {
+		base = path[i+1:]
+	}
+	if len(base) < 33 {
+		return name.Tag{}, fmt.Errorf("store path %q carries no hash", path)
+	}
+	return name.NewTag(fmt.Sprintf("%s:nix-%s", repo.Name(), base[:32]))
+}
+
 // resolveFlakeURL returns the explicit flake URL when set, otherwise the
 // build context path so nix commands keep targeting the local flake.
 // Values starting with '-' are rejected so a flake URL can never be

@@ -75,10 +75,6 @@ func NewContainerClient(_ context.Context, opts ...ContainerOption) *ContainerCl
 	}
 }
 
-// NixOutPathAnnotation records the nix store path of the image on its
-// manifest, keyed by the OCI annotation namespace wharf owns.
-const NixOutPathAnnotation = "org.shikanime.wharf.nix-out-path"
-
 func (c *ContainerClient) CheckPushPermission(ref name.Reference) error {
 	if err := remote.CheckPushPermission(ref, c.keychain, c.transport); err != nil {
 		return fmt.Errorf("check push permission failed: %w", err)
@@ -133,41 +129,35 @@ func (c *ContainerClient) PushManifest(
 	return nil
 }
 
-// CachedImage returns the image published under ref when its manifest
-// carries the expected nix store-path annotation; any miss (tag absent,
-// stale content, missing annotation) is an error the caller treats as a
-// cache miss.
-func (c *ContainerClient) CachedImage(ref name.Reference, wantOutPath string) (v1.Image, error) {
+// CachedImage fetches the image published under the nix-<hash> cache tag;
+// the tag only ever names one closure's image, so its presence is a hit.
+func (c *ContainerClient) CachedImage(ref name.Reference) (v1.Image, error) {
 	img, err := remote.Image(ref, c.remote...)
 	if err != nil {
 		return nil, fmt.Errorf("fetch cached image failed: %w", err)
 	}
-	mf, err := img.Manifest()
-	if err != nil {
-		return nil, fmt.Errorf("read cached manifest failed: %w", err)
-	}
-	if got := mf.Annotations[NixOutPathAnnotation]; got != wantOutPath {
-		return nil, fmt.Errorf(
-			"cached image annotation mismatch: has %q, want %q",
-			got, wantOutPath,
-		)
-	}
 	return img, nil
 }
 
-// AnnotateImage repushes the freshly built image under ref with the nix
-// store-path annotation stamped on its manifest, recording the build for
-// the next cache lookup.
-func (c *ContainerClient) AnnotateImage(ref name.Reference, outPath string) error {
-	img, err := tarball.Image(gzipPathOpener(outPath), nil)
+// TagImage tags the image already published under src with the immutable
+// nix-<hash> cache tag — manifest fetch plus manifest PUT, no layer or
+// tarball transfer.
+func (c *ContainerClient) TagImage(tag name.Tag, src name.Reference) error {
+	img, err := remote.Image(src, c.remote...)
 	if err != nil {
-		return fmt.Errorf("load image from tarball failed: %w", err)
+		return fmt.Errorf("fetch image for cache tag failed: %w", err)
 	}
-	annotated := mutate.Annotations(img, map[string]string{
-		NixOutPathAnnotation: outPath,
-	})
-	if err := remote.Write(ref, annotated.(v1.Image), c.remote...); err != nil {
-		return fmt.Errorf("push annotated image failed: %w", err)
+	if err := remote.Tag(tag, img, c.remote...); err != nil {
+		return fmt.Errorf("tag cache image failed: %w", err)
+	}
+	return nil
+}
+
+// PushCachedImage republishes a registry-cached image under ref; manifest
+// write only, no layer transfer.
+func (c *ContainerClient) PushCachedImage(ref name.Reference, img v1.Image) error {
+	if err := remote.Write(ref, img, c.remote...); err != nil {
+		return fmt.Errorf("push cached image failed: %w", err)
 	}
 	return nil
 }
@@ -239,13 +229,4 @@ func (g *gzipReadCloser) Close() error {
 		return err
 	}
 	return g.file.Close()
-}
-
-// PushCachedImage republishes a registry-cached image under ref; manifest
-// write only, no layer transfer.
-func (c *ContainerClient) PushCachedImage(ref name.Reference, img v1.Image) error {
-	if err := remote.Write(ref, img, c.remote...); err != nil {
-		return fmt.Errorf("push cached image failed: %w", err)
-	}
-	return nil
 }
