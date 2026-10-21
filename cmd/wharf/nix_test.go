@@ -418,13 +418,9 @@ func TestNixClientBatchBuildPlatformImagesRejectsMissingResult(t *testing.T) {
 
 // TestBatchBuildPlatformImagesRealNix exercises the full nix-fast-build pipeline
 // against this repository's own flake (packages.<host-system>.default).
-// Requires network, a working nix, and nix-fast-build in PATH, so it only
-// runs when WHARF_TEST_REAL_NIX=1 is set (nix build / nix flake check set
-// it for integration runs).
+// Requires network, a working nix, and nix-fast-build in PATH — skipped when
+// any of those is absent so plain `go test` stays green on bare hosts.
 func TestBatchBuildPlatformImagesRealNix(t *testing.T) {
-	if os.Getenv("WHARF_TEST_REAL_NIX") != "1" {
-		t.Skip("set WHARF_TEST_REAL_NIX=1 to run the real-nix integration test")
-	}
 	if _, err := exec.LookPath("nix-fast-build"); err != nil {
 		t.Skipf("nix-fast-build not in PATH: %v", err)
 	}
