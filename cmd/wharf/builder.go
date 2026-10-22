@@ -39,8 +39,11 @@ type nixBuilderClient interface {
 
 type containerBuilderClient interface {
 	CheckPushPermission(name.Reference) error
+	CheckHead(name.Tag) error
 	PushImage(name.Reference, string) error
 	PushPlatformImage(name.Reference, *v1.Platform, string) (mutate.IndexAddendum, error)
+	RetagImage(name.Tag, name.Reference) error
+	RetagPlatformImage(name.Tag, name.Reference, *v1.Platform) (mutate.IndexAddendum, error)
 	PushManifest(name.Reference, []mutate.IndexAddendum) error
 }
 
@@ -197,7 +200,22 @@ func (b *Builder) buildAndPushMultiplatformImage(
 				"platform", formatSystemName(p),
 				"platform_ref", platformTag.Name(),
 			)
-			add, err := b.container.PushPlatformImage(platformTag, p, path)
+			cacheTag, err := formatCacheTag(ref, path)
+			if err != nil {
+				return fmt.Errorf("format cache reference failed: %w", err)
+			}
+			hit := b.container.CheckHead(cacheTag) == nil
+			var add mutate.IndexAddendum
+			if hit {
+				slog.InfoContext(ctx, "cache hit, retagging", "ref", ref.Name(), "platform", formatSystemName(p), "cache_tag", cacheTag.Name())
+				add, err = b.container.RetagPlatformImage(cacheTag, platformTag, p)
+			} else {
+				add, err = b.container.PushPlatformImage(platformTag, p, path)
+				if err == nil {
+					slog.InfoContext(ctx, "seeding cache tag", "cache_tag", cacheTag.Name())
+					err = b.container.RetagImage(cacheTag, platformTag)
+				}
+			}
 			if err != nil {
 				return err
 			}
@@ -242,10 +260,21 @@ func (b *Builder) buildAndPushImage(
 		return fmt.Errorf("build flake image failed: %w", err)
 	}
 	if b.push {
+		cacheTag, err := formatCacheTag(ref, path)
+		if err != nil {
+			return fmt.Errorf("format cache reference failed: %w", err)
+		}
+		hit := b.container.CheckHead(cacheTag) == nil
+		if hit {
+			slog.InfoContext(ctx, "cache hit, retagging", "ref", ref.Name(), "cache_tag", cacheTag.Name())
+			return b.container.RetagImage(cacheTag, ref)
+		}
 		slog.DebugContext(ctx, "push image", "ref", ref.Name())
 		if err := b.container.PushImage(ref, path); err != nil {
 			return err
 		}
+		slog.InfoContext(ctx, "seeding cache tag", "cache_tag", cacheTag.Name())
+		return b.container.RetagImage(cacheTag, ref)
 	}
 	return nil
 }

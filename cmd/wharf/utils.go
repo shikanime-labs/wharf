@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/google/go-containerregistry/pkg/name"
@@ -80,4 +81,45 @@ func resolveFlakeURL(buildContext, flake string) (string, error) {
 		return "", fmt.Errorf("invalid flake URL %q: must not start with '-'", flake)
 	}
 	return flake, nil
+}
+
+// formatCacheTag derives the content-addressed cache tag for a built
+// platform image: {repo}/cache/{image-name}:{nix-store-hash}. The store hash
+// fully determines the tarball bytes, so an image already pushed under this
+// tag is byte-identical to a fresh build and can be retagged instead of
+// rebuilt and re-uploaded.
+func formatCacheTag(ref name.Reference, path string) (name.Tag, error) {
+	hash := nixStoreHash(path)
+	if hash == "" {
+		return name.Tag{}, fmt.Errorf("no nix store hash in path %q", path)
+	}
+	image := filepath.Base(ref.Context().Name())
+	tag, err := name.NewTag(fmt.Sprintf("%s/cache/%s:%s", ref.Context().Name(), image, hash))
+	if err != nil {
+		return name.Tag{}, fmt.Errorf("failed to format cache reference: %w", err)
+	}
+	return tag, nil
+}
+
+// nixStoreHash extracts the hash segment of a /nix/store/<hash>-<name> path.
+// Nix store hashes are base-32, exactly 32 characters.
+func nixStoreHash(path string) string {
+	base := path
+	for i := len(base) - 1; i >= 0; i-- {
+		if base[i] == '/' {
+			base = base[i+1:]
+			break
+		}
+	}
+	for i := 0; i < len(base); i++ {
+		if base[i] != '-' {
+			continue
+		}
+		hash := base[:i]
+		if len(hash) == 32 {
+			return hash
+		}
+		return ""
+	}
+	return ""
 }

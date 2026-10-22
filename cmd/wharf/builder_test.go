@@ -58,10 +58,11 @@ func TestBuilderBuildAndPushSinglePlatformStreamFlow(t *testing.T) {
 	plat := &v1.Platform{OS: "linux", Architecture: "amd64"}
 	nixClient := &mockNixBuilderClient{
 		BuildPlatformImageFunc: func(context.Context, string, name.Reference, *v1.Platform, ...imageOption) (string, error) {
-			return "/tmp/result", nil
+			return "/nix/store/00000000000000000000000000000000-single-platform.tar.gz", nil
 		},
 	}
 	containerClient := &mockContainerBuilderClient{
+		CheckHeadFunc: func(name.Tag) error { return errors.New("MANIFEST_UNKNOWN") },
 		PushImageFunc: func(name.Reference, string) error {
 			return nil
 		},
@@ -141,12 +142,14 @@ func TestBuilderBuildAndPushMultiplatformTracksImage(t *testing.T) {
 		BatchBuildPlatformImagesFunc: func(_ context.Context, _ string, _ name.Reference, platforms []*v1.Platform, _ ...imageOption) ([]string, error) {
 			paths := make([]string, len(platforms))
 			for i := range platforms {
-				paths[i] = fmt.Sprintf("/tmp/result-%d", i)
+				paths[i] = fmt.Sprintf("/nix/store/%032d-batch.tar.gz", i)
 			}
 			return paths, nil
 		},
 	}
 	containerClient := &mockContainerBuilderClient{
+		// Force registry misses so both platforms take the push path.
+		CheckHeadFunc: func(name.Tag) error { return errors.New("MANIFEST_UNKNOWN") },
 		PushPlatformImageFunc: func(name.Reference, *v1.Platform, string) (mutate.IndexAddendum, error) {
 			return mutate.IndexAddendum{}, nil
 		},
