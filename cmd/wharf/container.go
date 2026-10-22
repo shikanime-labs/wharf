@@ -145,6 +145,7 @@ func (c *ContainerClient) PushPlatformImage(
 	ref name.Reference,
 	p *v1.Platform,
 	path string,
+	cacheTag *name.Tag,
 ) (mutate.IndexAddendum, error) {
 	img, err := tarball.Image(gzipPathOpener(path), nil)
 	if err != nil {
@@ -152,6 +153,13 @@ func (c *ContainerClient) PushPlatformImage(
 	}
 	if err := remote.Write(ref, img, c.remote...); err != nil {
 		return mutate.IndexAddendum{}, fmt.Errorf("push image failed: %w", err)
+	}
+	// The layers are on the registry now; the cache tag is the same manifest
+	// under another name — one extra PUT, no fetch.
+	if cacheTag != nil {
+		if err := remote.Write(*cacheTag, img, c.remote...); err != nil {
+			return mutate.IndexAddendum{}, fmt.Errorf("seed cache tag failed: %w", err)
+		}
 	}
 	return mutate.IndexAddendum{
 		Add:        img,

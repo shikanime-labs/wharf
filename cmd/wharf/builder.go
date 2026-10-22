@@ -41,7 +41,7 @@ type containerBuilderClient interface {
 	CheckPushPermission(name.Reference) error
 	CheckHead(name.Tag) error
 	PushImage(name.Reference, string) error
-	PushPlatformImage(name.Reference, *v1.Platform, string) (mutate.IndexAddendum, error)
+	PushPlatformImage(name.Reference, *v1.Platform, string, *name.Tag) (mutate.IndexAddendum, error)
 	RetagImage(name.Tag, name.Reference) error
 	RetagPlatformImage(name.Tag, name.Reference, *v1.Platform) (mutate.IndexAddendum, error)
 	PushManifest(name.Reference, []mutate.IndexAddendum) error
@@ -210,10 +210,9 @@ func (b *Builder) buildAndPushMultiplatformImage(
 				slog.InfoContext(ctx, "cache hit, retagging", "ref", ref.Name(), "platform", formatSystemName(p), "cache_tag", cacheTag.Name())
 				add, err = b.container.RetagPlatformImage(cacheTag, platformTag, p)
 			} else {
-				add, err = b.container.PushPlatformImage(platformTag, p, path)
+				add, err = b.container.PushPlatformImage(platformTag, p, path, &cacheTag)
 				if err == nil {
 					slog.InfoContext(ctx, "seeding cache tag", "cache_tag", cacheTag.Name())
-					err = b.container.RetagImage(cacheTag, platformTag)
 				}
 			}
 			if err != nil {

@@ -216,7 +216,7 @@ type mockContainerBuilderClient struct {
 	PushManifestFunc func(reference name.Reference, indexAddendums []mutate.IndexAddendum) error
 
 	// PushPlatformImageFunc mocks the PushPlatformImage method.
-	PushPlatformImageFunc func(reference name.Reference, platform *v1.Platform, s string) (mutate.IndexAddendum, error)
+	PushPlatformImageFunc func(reference name.Reference, platform *v1.Platform, s string, cacheTag *name.Tag) (mutate.IndexAddendum, error)
 
 	// CheckHeadFunc mocks the CheckHead method.
 	CheckHeadFunc func(tag name.Tag) error
@@ -396,7 +396,7 @@ func (mock *mockContainerBuilderClient) PushManifestCalls() []struct {
 }
 
 // PushPlatformImage calls PushPlatformImageFunc.
-func (mock *mockContainerBuilderClient) PushPlatformImage(reference name.Reference, platform *v1.Platform, s string) (mutate.IndexAddendum, error) {
+func (mock *mockContainerBuilderClient) PushPlatformImage(reference name.Reference, platform *v1.Platform, s string, cacheTag *name.Tag) (mutate.IndexAddendum, error) {
 	callInfo := struct {
 		Reference name.Reference
 		Platform  *v1.Platform
@@ -416,7 +416,7 @@ func (mock *mockContainerBuilderClient) PushPlatformImage(reference name.Referen
 		)
 		return indexAddendumOut, errOut
 	}
-	return mock.PushPlatformImageFunc(reference, platform, s)
+	return mock.PushPlatformImageFunc(reference, platform, s, cacheTag)
 }
 
 // PushPlatformImageCalls gets all the calls that were made to PushPlatformImage.

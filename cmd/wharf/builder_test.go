@@ -150,7 +150,7 @@ func TestBuilderBuildAndPushMultiplatformTracksImage(t *testing.T) {
 	containerClient := &mockContainerBuilderClient{
 		// Force registry misses so both platforms take the push path.
 		CheckHeadFunc: func(name.Tag) error { return errors.New("MANIFEST_UNKNOWN") },
-		PushPlatformImageFunc: func(name.Reference, *v1.Platform, string) (mutate.IndexAddendum, error) {
+		PushPlatformImageFunc: func(name.Reference, *v1.Platform, string, *name.Tag) (mutate.IndexAddendum, error) {
 			return mutate.IndexAddendum{}, nil
 		},
 	}
