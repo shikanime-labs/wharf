@@ -97,6 +97,59 @@ func (c *ContainerClient) PushImage(ref name.Reference, path string) error {
 	return nil
 }
 
+// CacheHead resolves the cache tag for a built store path and reports whether
+// it already exists in the registry. The store hash fully determines the
+// tarball bytes, so a hit means the image is already uploaded and only needs
+// retagging.
+func (c *ContainerClient) CacheHead(
+	ref name.Reference,
+	p *v1.Platform,
+	path string,
+) (name.Tag, bool, error) {
+	tag, err := cacheTagForPath(ref, p, path)
+	if err != nil {
+		return name.Tag{}, false, err
+	}
+	if _, err := remote.Head(*tag, c.remote...); err != nil {
+		// 404 (and any registry that won't answer HEAD) falls through to a
+		// normal push — a probe failure must never fail the build.
+		return *tag, false, nil
+	}
+	return *tag, true, nil
+}
+
+// RetagPlatformImage copies an existing cache-tagged image onto the platform
+// tag without uploading any layers: it re-points the manifest by descriptor.
+func (c *ContainerClient) RetagPlatformImage(
+	src name.Tag,
+	dst name.Reference,
+	p *v1.Platform,
+) (mutate.IndexAddendum, error) {
+	img, err := remote.Image(src, c.remote...)
+	if err != nil {
+		return mutate.IndexAddendum{}, fmt.Errorf("fetch cached image failed: %w", err)
+	}
+	if err := remote.Write(dst, img, c.remote...); err != nil {
+		return mutate.IndexAddendum{}, fmt.Errorf("push image failed: %w", err)
+	}
+	return mutate.IndexAddendum{
+		Add:        img,
+		Descriptor: v1.Descriptor{Platform: p},
+	}, nil
+}
+
+// RetagImage copies an existing cache-tagged image onto the target tag.
+func (c *ContainerClient) RetagImage(src name.Tag, dst name.Reference) error {
+	img, err := remote.Image(src, c.remote...)
+	if err != nil {
+		return fmt.Errorf("fetch cached image failed: %w", err)
+	}
+	if err := remote.Write(dst, img, c.remote...); err != nil {
+		return fmt.Errorf("push image failed: %w", err)
+	}
+	return nil
+}
+
 func (c *ContainerClient) PushPlatformImage(
 	ref name.Reference,
 	p *v1.Platform,

@@ -218,6 +218,15 @@ type mockContainerBuilderClient struct {
 	// PushPlatformImageFunc mocks the PushPlatformImage method.
 	PushPlatformImageFunc func(reference name.Reference, platform *v1.Platform, s string) (mutate.IndexAddendum, error)
 
+	// CacheHeadFunc mocks the CacheHead method.
+	CacheHeadFunc func(reference name.Reference, platform *v1.Platform, s string) (name.Tag, bool, error)
+
+	// RetagImageFunc mocks the RetagImage method.
+	RetagImageFunc func(source name.Tag, destination name.Reference) error
+
+	// RetagPlatformImageFunc mocks the RetagPlatformImage method.
+	RetagPlatformImageFunc func(source name.Tag, destination name.Reference, platform *v1.Platform) (mutate.IndexAddendum, error)
+
 	// calls tracks calls to the methods.
 	calls struct {
 		// CheckPushPermission holds details about calls to the CheckPushPermission method.
@@ -248,11 +257,31 @@ type mockContainerBuilderClient struct {
 			// S is the s argument value.
 			S string
 		}
+		// CacheHead holds details about calls to the CacheHead method.
+		CacheHead []struct {
+			Reference name.Reference
+			Platform  *v1.Platform
+			S         string
+		}
+		// RetagImage holds details about calls to the RetagImage method.
+		RetagImage []struct {
+			Source      name.Tag
+			Destination name.Reference
+		}
+		// RetagPlatformImage holds details about calls to the RetagPlatformImage method.
+		RetagPlatformImage []struct {
+			Source      name.Tag
+			Destination name.Reference
+			Platform    *v1.Platform
+		}
 	}
 	lockCheckPushPermission sync.RWMutex
 	lockPushImage           sync.RWMutex
 	lockPushManifest        sync.RWMutex
 	lockPushPlatformImage   sync.RWMutex
+	lockCacheHead           sync.RWMutex
+	lockRetagImage          sync.RWMutex
+	lockRetagPlatformImage  sync.RWMutex
 }
 
 // CheckPushPermission calls CheckPushPermissionFunc.
@@ -410,4 +439,59 @@ func (mock *mockContainerBuilderClient) PushPlatformImageCalls() []struct {
 	calls = mock.calls.PushPlatformImage
 	mock.lockPushPlatformImage.RUnlock()
 	return calls
+}
+
+// CacheHead calls CacheHeadFunc.
+func (mock *mockContainerBuilderClient) CacheHead(reference name.Reference, platform *v1.Platform, s string) (name.Tag, bool, error) {
+	callInfo := struct {
+		Reference name.Reference
+		Platform  *v1.Platform
+		S         string
+	}{
+		Reference: reference,
+		Platform:  platform,
+		S:         s,
+	}
+	mock.lockCacheHead.Lock()
+	mock.calls.CacheHead = append(mock.calls.CacheHead, callInfo)
+	mock.lockCacheHead.Unlock()
+	if mock.CacheHeadFunc == nil {
+		return name.Tag{}, false, nil
+	}
+	return mock.CacheHeadFunc(reference, platform, s)
+}
+
+// RetagImage calls RetagImageFunc.
+func (mock *mockContainerBuilderClient) RetagImage(source name.Tag, destination name.Reference) error {
+	callInfo := struct {
+		Source      name.Tag
+		Destination name.Reference
+	}{source, destination}
+	mock.lockRetagImage.Lock()
+	mock.calls.RetagImage = append(mock.calls.RetagImage, callInfo)
+	mock.lockRetagImage.Unlock()
+	if mock.RetagImageFunc == nil {
+		return nil
+	}
+	return mock.RetagImageFunc(source, destination)
+}
+
+// RetagPlatformImage calls RetagPlatformImageFunc.
+func (mock *mockContainerBuilderClient) RetagPlatformImage(source name.Tag, destination name.Reference, platform *v1.Platform) (mutate.IndexAddendum, error) {
+	callInfo := struct {
+		Source      name.Tag
+		Destination name.Reference
+		Platform    *v1.Platform
+	}{source, destination, platform}
+	mock.lockRetagPlatformImage.Lock()
+	mock.calls.RetagPlatformImage = append(mock.calls.RetagPlatformImage, callInfo)
+	mock.lockRetagPlatformImage.Unlock()
+	if mock.RetagPlatformImageFunc == nil {
+		var (
+			indexAddendumOut mutate.IndexAddendum
+			errOut           error
+		)
+		return indexAddendumOut, errOut
+	}
+	return mock.RetagPlatformImageFunc(source, destination, platform)
 }
