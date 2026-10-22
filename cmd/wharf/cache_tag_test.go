@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/name"
@@ -13,8 +14,7 @@ func TestCacheTagForPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := &v1.Platform{OS: "linux", Architecture: "arm64"}
-	tag, err := formatCacheTag(ref, p, "/nix/store/h14pps4qvfdf9rkpq4ch0hbzm19mybri-docker-image-automata.tar.gz")
+	tag, err := formatCacheTag(ref, "/nix/store/h14pps4qvfdf9rkpq4ch0hbzm19mybri-docker-image-automata.tar.gz")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,13 +43,8 @@ func TestBuildAndPushImageCacheHit(t *testing.T) {
 				return "/nix/store/h14pps4qvfdf9rkpq4ch0hbzm19mybri-docker-image-automata.tar.gz", nil
 			},
 		},
-		container: &mockContainerBuilderClient{
-			HeadFunc: func(name.Reference, *v1.Platform, string) (name.Tag, bool, error) {
-				tag, _ := name.NewTag("ghcr.io/shikanime-labs/machines/automata/cache/automata:h14pps4qvfdf9rkpq4ch0hbzm19mybri")
-				return tag, true, nil
-			},
-		},
-		push: true,
+		container: &mockContainerBuilderClient{}, // HeadFunc nil -> Head returns nil -> hit
+		push:      true,
 	}
 	ref, _ := name.ParseReference("ghcr.io/shikanime-labs/machines/automata:v1.0.2", name.WeakValidation)
 	p := &v1.Platform{OS: "linux", Architecture: "arm64"}
@@ -72,8 +67,11 @@ func TestBuildAndPushImageCacheMiss(t *testing.T) {
 				return "/nix/store/h14pps4qvfdf9rkpq4ch0hbzm19mybri-docker-image-automata.tar.gz", nil
 			},
 		},
-		container: &mockContainerBuilderClient{},
-		push:      true,
+		container: &mockContainerBuilderClient{
+			// HeadFunc errors = registry miss.
+			HeadFunc: func(name.Tag) error { return errors.New("MANIFEST_UNKNOWN") },
+		},
+		push: true,
 	}
 	ref, _ := name.ParseReference("ghcr.io/shikanime-labs/machines/automata:v1.0.2", name.WeakValidation)
 	p := &v1.Platform{OS: "linux", Architecture: "arm64"}
@@ -83,6 +81,9 @@ func TestBuildAndPushImageCacheMiss(t *testing.T) {
 	calls := b.container.(*mockContainerBuilderClient)
 	if n := len(calls.calls.PushImage); n != 1 {
 		t.Fatalf("PushImage called %d times on miss, want 1", n)
+	}
+	if n := len(calls.calls.Head); n != 1 {
+		t.Fatalf("Head called %d times, want 1", n)
 	}
 	if n := len(calls.calls.RetagImage); n != 1 {
 		t.Fatalf("RetagImage called %d times on miss (seed), want 1", n)

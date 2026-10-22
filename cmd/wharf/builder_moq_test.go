@@ -219,7 +219,7 @@ type mockContainerBuilderClient struct {
 	PushPlatformImageFunc func(reference name.Reference, platform *v1.Platform, s string) (mutate.IndexAddendum, error)
 
 	// HeadFunc mocks the Head method.
-	HeadFunc func(reference name.Reference, platform *v1.Platform, s string) (name.Tag, bool, error)
+	HeadFunc func(tag name.Tag) error
 
 	// RetagImageFunc mocks the RetagImage method.
 	RetagImageFunc func(source name.Tag, destination name.Reference) error
@@ -259,9 +259,7 @@ type mockContainerBuilderClient struct {
 		}
 		// Head holds details about calls to the Head method.
 		Head []struct {
-			Reference name.Reference
-			Platform  *v1.Platform
-			S         string
+			Tag name.Tag
 		}
 		// RetagImage holds details about calls to the RetagImage method.
 		RetagImage []struct {
@@ -442,23 +440,14 @@ func (mock *mockContainerBuilderClient) PushPlatformImageCalls() []struct {
 }
 
 // Head calls HeadFunc.
-func (mock *mockContainerBuilderClient) Head(reference name.Reference, platform *v1.Platform, s string) (name.Tag, bool, error) {
-	callInfo := struct {
-		Reference name.Reference
-		Platform  *v1.Platform
-		S         string
-	}{
-		Reference: reference,
-		Platform:  platform,
-		S:         s,
-	}
+func (mock *mockContainerBuilderClient) Head(tag name.Tag) error {
 	mock.lockHead.Lock()
-	mock.calls.Head = append(mock.calls.Head, callInfo)
+	mock.calls.Head = append(mock.calls.Head, struct{ Tag name.Tag }{tag})
 	mock.lockHead.Unlock()
 	if mock.HeadFunc == nil {
-		return name.Tag{}, false, nil
+		return nil
 	}
-	return mock.HeadFunc(reference, platform, s)
+	return mock.HeadFunc(tag)
 }
 
 // RetagImage calls RetagImageFunc.

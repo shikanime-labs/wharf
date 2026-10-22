@@ -88,17 +88,17 @@ func resolveFlakeURL(buildContext, flake string) (string, error) {
 // fully determines the tarball bytes, so an image already pushed under this
 // tag is byte-identical to a fresh build and can be retagged instead of
 // rebuilt and re-uploaded.
-func formatCacheTag(ref name.Reference, p *v1.Platform, path string) (*name.Tag, error) {
+func formatCacheTag(ref name.Reference, path string) (name.Tag, error) {
 	hash := nixStoreHash(path)
 	if hash == "" {
-		return nil, fmt.Errorf("no nix store hash in path %q", path)
+		return name.Tag{}, fmt.Errorf("no nix store hash in path %q", path)
 	}
 	image := filepath.Base(ref.Context().Name())
 	tag, err := name.NewTag(fmt.Sprintf("%s/cache/%s:%s", ref.Context().Name(), image, hash))
 	if err != nil {
-		return nil, fmt.Errorf("failed to format cache reference: %w", err)
+		return name.Tag{}, fmt.Errorf("failed to format cache reference: %w", err)
 	}
-	return &tag, nil
+	return tag, nil
 }
 
 // nixStoreHash extracts the hash segment of a /nix/store/<hash>-<name> path.

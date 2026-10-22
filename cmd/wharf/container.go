@@ -97,24 +97,16 @@ func (c *ContainerClient) PushImage(ref name.Reference, path string) error {
 	return nil
 }
 
-// Head resolves the cache tag for a built store path and reports whether it
-// already exists in the registry. A miss — including any registry error —
-// falls through to a normal push, so a probe failure never fails a build.
-func (c *ContainerClient) Head(
-	ref name.Reference,
-	p *v1.Platform,
-	path string,
-) (name.Tag, bool, error) {
-	tag, err := formatCacheTag(ref, p, path)
-	if err != nil {
-		return name.Tag{}, false, err
-	}
-	if _, err := remote.Head(*tag, c.remote...); err != nil {
+// Head reports whether the tag exists in the registry. A miss — including any
+// registry error — surfaces as a nil error with a zero descriptor removed:
+// callers only need the boolean-free form, so the error carries the miss.
+func (c *ContainerClient) Head(tag name.Tag) error {
+	if _, err := remote.Head(tag, c.remote...); err != nil {
 		// 404 (and any registry that won't answer HEAD) falls through to a
 		// normal push — a probe failure must never fail the build.
-		return *tag, false, nil
+		return err
 	}
-	return *tag, true, nil
+	return nil
 }
 
 // RetagPlatformImage copies an existing cache-tagged image onto the platform
