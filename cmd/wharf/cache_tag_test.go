@@ -14,7 +14,7 @@ func TestCacheTagForPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &v1.Platform{OS: "linux", Architecture: "arm64"}
-	tag, err := cacheTagForPath(ref, p, "/nix/store/h14pps4qvfdf9rkpq4ch0hbzm19mybri-docker-image-automata.tar.gz")
+	tag, err := formatCacheTag(ref, p, "/nix/store/h14pps4qvfdf9rkpq4ch0hbzm19mybri-docker-image-automata.tar.gz")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func TestBuildAndPushImageCacheHit(t *testing.T) {
 			},
 		},
 		container: &mockContainerBuilderClient{
-			CacheHeadFunc: func(name.Reference, *v1.Platform, string) (name.Tag, bool, error) {
+			HeadFunc: func(name.Reference, *v1.Platform, string) (name.Tag, bool, error) {
 				tag, _ := name.NewTag("ghcr.io/shikanime-labs/machines/automata/cache/automata:h14pps4qvfdf9rkpq4ch0hbzm19mybri")
 				return tag, true, nil
 			},

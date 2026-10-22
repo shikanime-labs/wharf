@@ -39,7 +39,7 @@ type nixBuilderClient interface {
 
 type containerBuilderClient interface {
 	CheckPushPermission(name.Reference) error
-	CacheHead(name.Reference, *v1.Platform, string) (name.Tag, bool, error)
+	Head(name.Reference, *v1.Platform, string) (name.Tag, bool, error)
 	PushImage(name.Reference, string) error
 	PushPlatformImage(name.Reference, *v1.Platform, string) (mutate.IndexAddendum, error)
 	RetagImage(name.Tag, name.Reference) error
@@ -200,7 +200,7 @@ func (b *Builder) buildAndPushMultiplatformImage(
 				"platform", formatSystemName(p),
 				"platform_ref", platformTag.Name(),
 			)
-			cacheTag, hit, err := b.container.CacheHead(ref, p, path)
+			cacheTag, hit, err := b.container.Head(ref, p, path)
 			if err != nil {
 				return err
 			}
@@ -259,7 +259,7 @@ func (b *Builder) buildAndPushImage(
 		return fmt.Errorf("build flake image failed: %w", err)
 	}
 	if b.push {
-		cacheTag, hit, err := b.container.CacheHead(ref, p, path)
+		cacheTag, hit, err := b.container.Head(ref, p, path)
 		if err != nil {
 			return err
 		}

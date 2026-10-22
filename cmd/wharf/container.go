@@ -97,16 +97,15 @@ func (c *ContainerClient) PushImage(ref name.Reference, path string) error {
 	return nil
 }
 
-// CacheHead resolves the cache tag for a built store path and reports whether
-// it already exists in the registry. The store hash fully determines the
-// tarball bytes, so a hit means the image is already uploaded and only needs
-// retagging.
-func (c *ContainerClient) CacheHead(
+// Head resolves the cache tag for a built store path and reports whether it
+// already exists in the registry. A miss — including any registry error —
+// falls through to a normal push, so a probe failure never fails a build.
+func (c *ContainerClient) Head(
 	ref name.Reference,
 	p *v1.Platform,
 	path string,
 ) (name.Tag, bool, error) {
-	tag, err := cacheTagForPath(ref, p, path)
+	tag, err := formatCacheTag(ref, p, path)
 	if err != nil {
 		return name.Tag{}, false, err
 	}

@@ -218,8 +218,8 @@ type mockContainerBuilderClient struct {
 	// PushPlatformImageFunc mocks the PushPlatformImage method.
 	PushPlatformImageFunc func(reference name.Reference, platform *v1.Platform, s string) (mutate.IndexAddendum, error)
 
-	// CacheHeadFunc mocks the CacheHead method.
-	CacheHeadFunc func(reference name.Reference, platform *v1.Platform, s string) (name.Tag, bool, error)
+	// HeadFunc mocks the Head method.
+	HeadFunc func(reference name.Reference, platform *v1.Platform, s string) (name.Tag, bool, error)
 
 	// RetagImageFunc mocks the RetagImage method.
 	RetagImageFunc func(source name.Tag, destination name.Reference) error
@@ -257,8 +257,8 @@ type mockContainerBuilderClient struct {
 			// S is the s argument value.
 			S string
 		}
-		// CacheHead holds details about calls to the CacheHead method.
-		CacheHead []struct {
+		// Head holds details about calls to the Head method.
+		Head []struct {
 			Reference name.Reference
 			Platform  *v1.Platform
 			S         string
@@ -279,7 +279,7 @@ type mockContainerBuilderClient struct {
 	lockPushImage           sync.RWMutex
 	lockPushManifest        sync.RWMutex
 	lockPushPlatformImage   sync.RWMutex
-	lockCacheHead           sync.RWMutex
+	lockHead                sync.RWMutex
 	lockRetagImage          sync.RWMutex
 	lockRetagPlatformImage  sync.RWMutex
 }
@@ -441,8 +441,8 @@ func (mock *mockContainerBuilderClient) PushPlatformImageCalls() []struct {
 	return calls
 }
 
-// CacheHead calls CacheHeadFunc.
-func (mock *mockContainerBuilderClient) CacheHead(reference name.Reference, platform *v1.Platform, s string) (name.Tag, bool, error) {
+// Head calls HeadFunc.
+func (mock *mockContainerBuilderClient) Head(reference name.Reference, platform *v1.Platform, s string) (name.Tag, bool, error) {
 	callInfo := struct {
 		Reference name.Reference
 		Platform  *v1.Platform
@@ -452,13 +452,13 @@ func (mock *mockContainerBuilderClient) CacheHead(reference name.Reference, plat
 		Platform:  platform,
 		S:         s,
 	}
-	mock.lockCacheHead.Lock()
-	mock.calls.CacheHead = append(mock.calls.CacheHead, callInfo)
-	mock.lockCacheHead.Unlock()
-	if mock.CacheHeadFunc == nil {
+	mock.lockHead.Lock()
+	mock.calls.Head = append(mock.calls.Head, callInfo)
+	mock.lockHead.Unlock()
+	if mock.HeadFunc == nil {
 		return name.Tag{}, false, nil
 	}
-	return mock.CacheHeadFunc(reference, platform, s)
+	return mock.HeadFunc(reference, platform, s)
 }
 
 // RetagImage calls RetagImageFunc.
