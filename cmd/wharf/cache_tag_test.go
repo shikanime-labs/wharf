@@ -43,7 +43,7 @@ func TestBuildAndPushImageCacheHit(t *testing.T) {
 				return "/nix/store/h14pps4qvfdf9rkpq4ch0hbzm19mybri-docker-image-automata.tar.gz", nil
 			},
 		},
-		container: &mockContainerBuilderClient{}, // HeadFunc nil -> Head returns nil -> hit
+		container: &mockContainerBuilderClient{}, // CheckHeadFunc nil -> CheckHead returns nil -> hit
 		push:      true,
 	}
 	ref, _ := name.ParseReference("ghcr.io/shikanime-labs/machines/automata:v1.0.2", name.WeakValidation)
@@ -69,7 +69,7 @@ func TestBuildAndPushImageCacheMiss(t *testing.T) {
 		},
 		container: &mockContainerBuilderClient{
 			// HeadFunc errors = registry miss.
-			HeadFunc: func(name.Tag) error { return errors.New("MANIFEST_UNKNOWN") },
+			CheckHeadFunc: func(name.Tag) error { return errors.New("MANIFEST_UNKNOWN") },
 		},
 		push: true,
 	}
@@ -82,7 +82,7 @@ func TestBuildAndPushImageCacheMiss(t *testing.T) {
 	if n := len(calls.calls.PushImage); n != 1 {
 		t.Fatalf("PushImage called %d times on miss, want 1", n)
 	}
-	if n := len(calls.calls.Head); n != 1 {
+	if n := len(calls.calls.CheckHead); n != 1 {
 		t.Fatalf("Head called %d times, want 1", n)
 	}
 	if n := len(calls.calls.RetagImage); n != 1 {

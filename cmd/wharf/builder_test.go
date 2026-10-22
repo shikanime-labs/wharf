@@ -62,7 +62,7 @@ func TestBuilderBuildAndPushSinglePlatformStreamFlow(t *testing.T) {
 		},
 	}
 	containerClient := &mockContainerBuilderClient{
-		HeadFunc: func(name.Tag) error { return errors.New("MANIFEST_UNKNOWN") },
+		CheckHeadFunc: func(name.Tag) error { return errors.New("MANIFEST_UNKNOWN") },
 		PushImageFunc: func(name.Reference, string) error {
 			return nil
 		},
@@ -149,7 +149,7 @@ func TestBuilderBuildAndPushMultiplatformTracksImage(t *testing.T) {
 	}
 	containerClient := &mockContainerBuilderClient{
 		// Force registry misses so both platforms take the push path.
-		HeadFunc: func(name.Tag) error { return errors.New("MANIFEST_UNKNOWN") },
+		CheckHeadFunc: func(name.Tag) error { return errors.New("MANIFEST_UNKNOWN") },
 		PushPlatformImageFunc: func(name.Reference, *v1.Platform, string) (mutate.IndexAddendum, error) {
 			return mutate.IndexAddendum{}, nil
 		},

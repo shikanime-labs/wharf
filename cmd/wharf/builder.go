@@ -39,7 +39,7 @@ type nixBuilderClient interface {
 
 type containerBuilderClient interface {
 	CheckPushPermission(name.Reference) error
-	Head(name.Tag) error
+	CheckHead(name.Tag) error
 	PushImage(name.Reference, string) error
 	PushPlatformImage(name.Reference, *v1.Platform, string) (mutate.IndexAddendum, error)
 	RetagImage(name.Tag, name.Reference) error
@@ -204,7 +204,7 @@ func (b *Builder) buildAndPushMultiplatformImage(
 			if err != nil {
 				return fmt.Errorf("format cache reference failed: %w", err)
 			}
-			hit := b.container.Head(cacheTag) == nil
+			hit := b.container.CheckHead(cacheTag) == nil
 			var add mutate.IndexAddendum
 			if hit {
 				slog.InfoContext(ctx, "cache hit, retagging", "ref", ref.Name(), "platform", formatSystemName(p), "cache_tag", cacheTag.Name())
@@ -264,7 +264,7 @@ func (b *Builder) buildAndPushImage(
 		if err != nil {
 			return fmt.Errorf("format cache reference failed: %w", err)
 		}
-		hit := b.container.Head(cacheTag) == nil
+		hit := b.container.CheckHead(cacheTag) == nil
 		if hit {
 			slog.InfoContext(ctx, "cache hit, retagging", "ref", ref.Name(), "cache_tag", cacheTag.Name())
 			return b.container.RetagImage(cacheTag, ref)

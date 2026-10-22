@@ -97,10 +97,10 @@ func (c *ContainerClient) PushImage(ref name.Reference, path string) error {
 	return nil
 }
 
-// Head reports whether the tag exists in the registry. A miss — including any
+// CheckHead reports whether the tag exists in the registry. A miss — including any
 // registry error — surfaces as a nil error with a zero descriptor removed:
 // callers only need the boolean-free form, so the error carries the miss.
-func (c *ContainerClient) Head(tag name.Tag) error {
+func (c *ContainerClient) CheckHead(tag name.Tag) error {
 	if _, err := remote.Head(tag, c.remote...); err != nil {
 		// 404 (and any registry that won't answer HEAD) falls through to a
 		// normal push — a probe failure must never fail the build.
