@@ -9,6 +9,35 @@ directly from the CLI as well.
 - Go install: `go install github.com/shikanime-studio/wharf@latest`
 - From source: `go build -o wharf .`
 
+## Flake module
+
+Import `wharf.flakeModule` and declare the images of the repository under
+`apps.wharf`; every image gets a `build-<name>` app and the generated
+`skaffold.yaml` build section.
+
+```nix
+{
+  inputs.wharf.url = "github:shikanime-labs/wharf";
+
+  outputs = inputs@{ flake-parts, wharf, ... }:
+    flake-parts.lib.mkFlake { inherit inputs; } {
+      imports = [ wharf.flakeModule ];
+      apps.wharf.app = {
+        image = "ghcr.io/you/app:latest";
+        platforms = [ "linux/amd64" "linux/arm64" ];
+      };
+    };
+}
+```
+
+- `nix run .#build-app` builds the image and pushes it.
+- `nix build .#skaffold-yaml` writes the `skaffold.yaml` the Skaffold CI
+  consumes.
+
+Per image: `image` (required, tag included), `flake` (defaults to
+`.#<name>-oci-image`), `platforms` (defaults to the host platform), `push`
+(defaults to `true`).
+
 ## Prerequisites
 
 - `nix` with flakes enabled (always)

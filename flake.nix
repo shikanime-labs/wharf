@@ -62,6 +62,7 @@
 
   outputs =
     inputs@{
+      self,
       devenv,
       devlib,
       flake-parts,
@@ -69,52 +70,62 @@
       treefmt-nix,
       ...
     }:
-    flake-parts.lib.mkFlake { inherit inputs; } {
-      imports = [
-        devenv.flakeModule
-        devlib.flakeModule
-        git-hooks.flakeModule
-        treefmt-nix.flakeModule
-      ];
-      perSystem =
-        { pkgs, lib, ... }:
-        {
-          devenv.shells.default.imports = [
-            devlib.devenvModules.go
-            devlib.devenvModules.nix
-            devlib.devenvModules.shell
-            devlib.devenvModules.shikanime-studio
-          ];
-          packages.default = pkgs.buildGoModule {
-            pname = "wharf";
-            version = "v0.1.0";
-            src = lib.cleanSource ./.;
-            subPackages = [ "cmd/wharf" ];
-            vendorHash = null;
-            nativeBuildInputs = [ pkgs.makeWrapper ];
-            postInstall = ''
-              wrapProgram $out/bin/wharf --prefix PATH : ${
-                pkgs.lib.makeBinPath (
-                  with pkgs;
-                  [
-                    nix
-                    nix-fast-build
-                    nix-eval-jobs
-                  ]
-                )
-              }
-            '';
-            meta = {
-              description = "Nix Containers CLI";
-              homepage = "https://github.com/shikanime-studio/wharf";
-              license = lib.licenses.asl20;
+    flake-parts.lib.mkFlake { inherit inputs; } (
+      { flake-parts-lib, ... }:
+      let
+        flakeModule = flake-parts-lib.importApply ./flake-module.nix { wharf = self; };
+      in
+      {
+        imports = [
+          devenv.flakeModule
+          devlib.flakeModule
+          git-hooks.flakeModule
+          treefmt-nix.flakeModule
+        ];
+        flake = {
+          inherit flakeModule;
+          flakeModules.default = flakeModule;
+        };
+        perSystem =
+          { pkgs, lib, ... }:
+          {
+            devenv.shells.default.imports = [
+              devlib.devenvModules.go
+              devlib.devenvModules.nix
+              devlib.devenvModules.shell
+              devlib.devenvModules.shikanime-studio
+            ];
+            packages.default = pkgs.buildGoModule {
+              pname = "wharf";
+              version = "v0.1.0";
+              src = lib.cleanSource ./.;
+              subPackages = [ "cmd/wharf" ];
+              vendorHash = null;
+              nativeBuildInputs = [ pkgs.makeWrapper ];
+              postInstall = ''
+                wrapProgram $out/bin/wharf --prefix PATH : ${
+                  pkgs.lib.makeBinPath (
+                    with pkgs;
+                    [
+                      nix
+                      nix-fast-build
+                      nix-eval-jobs
+                    ]
+                  )
+                }
+              '';
+              meta = {
+                description = "Nix Containers CLI";
+                homepage = "https://github.com/shikanime-studio/wharf";
+                license = lib.licenses.asl20;
+              };
             };
           };
-        };
-      systems = [
-        "x86_64-linux"
-        "aarch64-linux"
-        "aarch64-darwin"
-      ];
-    };
+        systems = [
+          "x86_64-linux"
+          "aarch64-linux"
+          "aarch64-darwin"
+        ];
+      }
+    );
 }
