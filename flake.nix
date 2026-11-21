@@ -85,6 +85,9 @@
             devlib.devenvModules.shell
             devlib.devenvModules.shikanime-studio
           ];
+          devenv.shells.default.enterTest = ''
+            go test ./cmd/...
+          '';
           packages.default = pkgs.buildGoModule {
             pname = "wharf";
             version = "v0.1.0";

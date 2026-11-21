@@ -418,22 +418,22 @@ func TestNixClientBatchBuildPlatformImagesRejectsMissingResult(t *testing.T) {
 
 // TestBatchBuildPlatformImagesRealNix exercises the full nix-fast-build pipeline
 // against this repository's own flake (packages.<host-system>.default).
-// Requires network, a working nix, and nix-fast-build in PATH, so it only
-// runs when WHARF_TEST_REAL_NIX=1 is set (nix build / nix flake check set
-// it for integration runs).
+// Requires network, a working nix, and nix-fast-build in PATH — skipped when
+// any of those is absent so plain `go test` stays green on bare hosts.
 func TestBatchBuildPlatformImagesRealNix(t *testing.T) {
-	if os.Getenv("WHARF_TEST_REAL_NIX") != "1" {
-		t.Skip("set WHARF_TEST_REAL_NIX=1 to run the real-nix integration test")
-	}
-	if runtime.GOOS != "darwin" || runtime.GOARCH != "arm64" {
-		t.Skipf(
-			"flake exposes packages.aarch64-darwin.default only, host is %s/%s",
-			runtime.GOOS,
-			runtime.GOARCH,
-		)
-	}
 	if _, err := exec.LookPath("nix-fast-build"); err != nil {
 		t.Skipf("nix-fast-build not in PATH: %v", err)
+	}
+
+	// one platform tuple per system the flake exposes; the host must be
+	// one of them (CI: linux runners; workstations: aarch64-darwin).
+	plat, ok := map[string]*v1.Platform{
+		"linux/amd64":  {OS: "linux", Architecture: "amd64"},
+		"linux/arm64":  {OS: "linux", Architecture: "arm64"},
+		"darwin/arm64": {OS: "darwin", Architecture: "arm64"},
+	}[runtime.GOOS+"/"+runtime.GOARCH]
+	if !ok {
+		t.Skipf("flake exposes no package for host %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
 
 	ctx := context.Background()
@@ -451,7 +451,7 @@ func TestBatchBuildPlatformImagesRealNix(t *testing.T) {
 		ctx,
 		repoRoot,
 		fakeRef,
-		[]*v1.Platform{{OS: "darwin", Architecture: "arm64"}},
+		[]*v1.Platform{plat},
 	)
 	if err != nil {
 		t.Fatalf("real nix build failed: %v", err)
