@@ -48,6 +48,10 @@ jobs:
           github-token: ${{ steps.createGithubAppToken.outputs.token || secrets.GITHUB_TOKEN }}
       - id: direnv
         uses: shikanime-labs/actions/direnv@8144b45cf1aed7ee09337cbca6b7d94b4693ef5e # v9
+      - name: Run e2e batch build (real nix-fast-build)
+        run: |
+          nix develop --accept-flake-config --no-pure-eval --command devenv test
+        shell: bash
       - name: Run flake check
         run: nix flake check --accept-flake-config --no-pure-eval --system "${{ matrix.system }}"
         shell: bash
